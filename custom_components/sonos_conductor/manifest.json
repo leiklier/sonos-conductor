@@ -1,0 +1,15 @@
+{
+  "domain": "sonos_conductor",
+  "name": "Sonos Conductor",
+  "codeowners": ["@leiklier"],
+  "config_flow": true,
+  "dependencies": [],
+  "after_dependencies": ["sonos"],
+  "documentation": "https://github.com/leiklier/sonos-conductor",
+  "integration_type": "hub",
+  "iot_class": "calculated",
+  "issue_tracker": "https://github.com/leiklier/sonos-conductor/issues",
+  "loggers": ["custom_components.sonos_conductor"],
+  "requirements": [],
+  "version": "0.1.0"
+}
