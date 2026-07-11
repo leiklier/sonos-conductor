@@ -13,3 +13,4 @@ CONF_DUCK_INPUTS = (
 )
 CONF_PRIMARY_SPEAKER = "primary_speaker"
 CONF_TUNABLES = "tunables"  # dict mirroring core.model.Tunables fields
+CONF_HOMEKIT_SOURCES = "homekit_sources"  # list[str]; empty = mirror the leader's full source_list

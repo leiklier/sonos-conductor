@@ -4,13 +4,29 @@
 entity is exposed through a HomeKit bridge, which puts the conductor's master
 volume on the iOS Control Center remote. Transport commands are forwarded to
 the group leader; volume/mute go through the engine.
+
+Two extra HomeKit affordances:
+
+- **Input sources**: the leader's ``source_list`` (Sonos favorites — radio
+  stations, playlists — plus hardware inputs like the Arc's TV) is mirrored,
+  so the Home app shows them as selectable inputs. Selection is forwarded to
+  the leader. Optionally restricted via the ``homekit_sources`` option.
+- **Remote skip**: the HomeKit bridge only handles play/pause itself; every
+  other remote key is re-fired on the HA bus as a
+  ``homekit_tv_remote_key_pressed`` event. We consume those aimed at this
+  entity and turn horizontal arrows / skip keys into next/previous track on
+  the leader, so swiping in the iOS Remote skips tracks.
 """
 
 from __future__ import annotations
 
 from homeassistant.components.media_player import (
+    ATTR_INPUT_SOURCE,
+    ATTR_INPUT_SOURCE_LIST,
     ATTR_MEDIA_ARTIST,
+    ATTR_MEDIA_CHANNEL,
     ATTR_MEDIA_TITLE,
+    SERVICE_SELECT_SOURCE,
     MediaPlayerDeviceClass,
     MediaPlayerEntity,
     MediaPlayerEntityFeature,
@@ -35,13 +51,21 @@ from homeassistant.core import EventStateChangedData, HomeAssistant, State, call
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change_event
 
-from .const import DOMAIN
+from .const import CONF_HOMEKIT_SOURCES, DOMAIN
 from .controller import UNAVAILABLE_STATES, ConductorEntity, SonosConductorController
 from .core.events import SetMaster, SetMute
 from .core.volume_math import clamp
 
 #: Master volume change per volume_up/volume_down press.
 VOLUME_STEP = 0.03
+
+# Literals from homeassistant.components.homekit.const — not imported because
+# importing the homekit package pulls in pyhap, which is only installed on
+# hosts that actually run a bridge.
+EVENT_HOMEKIT_TV_REMOTE_KEY_PRESSED = "homekit_tv_remote_key_pressed"
+ATTR_KEY_NAME = "key_name"
+NEXT_KEYS = ("arrow_right", "next_track", "fast_forward")
+PREVIOUS_KEYS = ("arrow_left", "previous_track", "rewind")
 
 
 async def async_setup_entry(
@@ -67,11 +91,14 @@ class SonosConductorMediaPlayer(ConductorEntity, MediaPlayerEntity):
         | MediaPlayerEntityFeature.PAUSE
         | MediaPlayerEntityFeature.NEXT_TRACK
         | MediaPlayerEntityFeature.PREVIOUS_TRACK
+        | MediaPlayerEntityFeature.SELECT_SOURCE
     )
 
     def __init__(self, controller: SonosConductorController) -> None:
         super().__init__(controller)
         self._attr_unique_id = f"{controller.entry.entry_id}_master"
+        allowlist = controller.entry.options.get(CONF_HOMEKIT_SOURCES) or []
+        self._source_allowlist: tuple[str, ...] = tuple(allowlist)
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
@@ -81,10 +108,24 @@ class SonosConductorMediaPlayer(ConductorEntity, MediaPlayerEntity):
                 self.hass, [self.controller.leader_entity_id], self._on_leader_change
             )
         )
+        # Swipes/skip keys in the iOS Remote arrive as bus events (the
+        # HomeKit bridge only handles play/pause itself).
+        self.async_on_remove(
+            self.hass.bus.async_listen(EVENT_HOMEKIT_TV_REMOTE_KEY_PRESSED, self._on_remote_key)
+        )
 
     @callback
     def _on_leader_change(self, _event: HAEvent[EventStateChangedData]) -> None:
         self.async_write_ha_state()
+
+    async def _on_remote_key(self, event: HAEvent) -> None:
+        if event.data.get(ATTR_ENTITY_ID) != self.entity_id:
+            return
+        key = event.data.get(ATTR_KEY_NAME)
+        if key in NEXT_KEYS:
+            await self._forward(SERVICE_MEDIA_NEXT_TRACK)
+        elif key in PREVIOUS_KEYS:
+            await self._forward(SERVICE_MEDIA_PREVIOUS_TRACK)
 
     @property
     def _leader(self) -> State | None:
@@ -126,6 +167,38 @@ class SonosConductorMediaPlayer(ConductorEntity, MediaPlayerEntity):
             return picture
         return super().entity_picture
 
+    @property
+    def source_list(self) -> list[str] | None:
+        """The leader's sources (Sonos favorites + inputs), optionally filtered."""
+        leader = self._leader
+        if leader is None:
+            return None
+        sources = leader.attributes.get(ATTR_INPUT_SOURCE_LIST) or []
+        if self._source_allowlist:
+            sources = [s for s in sources if s in self._source_allowlist]
+        return sources or None
+
+    @property
+    def source(self) -> str | None:
+        """Best-effort current source.
+
+        The leader reports ``source`` for inputs it recognizes (e.g. "TV",
+        "Spotify Connect"); radio favorites only show up embedded in
+        ``media_channel`` (e.g. "NRK P1 · Distriktsprogram"), so fall back to
+        the first listed source contained in the channel string.
+        """
+        leader = self._leader
+        if leader is None:
+            return None
+        sources = self.source_list or []
+        if (current := leader.attributes.get(ATTR_INPUT_SOURCE)) and current in sources:
+            return current
+        if channel := leader.attributes.get(ATTR_MEDIA_CHANNEL):
+            for candidate in sources:
+                if candidate in str(channel):
+                    return candidate
+        return None
+
     # -- commands -----------------------------------------------------------
 
     async def async_set_volume_level(self, volume: float) -> None:
@@ -155,6 +228,15 @@ class SonosConductorMediaPlayer(ConductorEntity, MediaPlayerEntity):
 
     async def async_media_previous_track(self) -> None:
         await self._forward(SERVICE_MEDIA_PREVIOUS_TRACK)
+
+    async def async_select_source(self, source: str) -> None:
+        """Forward a source (Sonos favorite / input) selection to the leader."""
+        await self.hass.services.async_call(
+            MEDIA_PLAYER_DOMAIN,
+            SERVICE_SELECT_SOURCE,
+            {ATTR_ENTITY_ID: self.controller.leader_entity_id, ATTR_INPUT_SOURCE: source},
+            blocking=False,
+        )
 
     async def _forward(self, service: str) -> None:
         await self.hass.services.async_call(

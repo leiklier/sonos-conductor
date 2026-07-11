@@ -518,3 +518,41 @@ async def test_options_tunables_roundtrip(hass: HomeAssistant) -> None:
     assert entry.options["tunables"] == {**TUNABLE_DEFAULTS, "fade_out": 8.0}
     assert entry.options["last_master"] == 0.42
     assert entry.options["speakers"] == _base_options()["speakers"]
+
+
+async def test_options_media_sources_roundtrip(hass: HomeAssistant) -> None:
+    """The media section stores the source allowlist and preserves other keys."""
+    entry = await _add_entry(hass)
+    # The leader (ARC) currently offers these sources.
+    hass.states.async_set(
+        ARC,
+        "playing",
+        {"source_list": ["TV", "NRK P1", "NRK P3", "Discover Weekly"]},
+    )
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {"next_step_id": "media"}
+    )
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "media"
+
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {"homekit_sources": ["NRK P1", "NRK P3", "TV"]}
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert entry.options["homekit_sources"] == ["NRK P1", "NRK P3", "TV"]
+    assert entry.options["last_master"] == 0.42
+    assert entry.options["zones"] == _base_options()["zones"]
+
+    # Clearing the selection reverts to mirroring everything.
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {"next_step_id": "media"}
+    )
+    assert _suggested(result)["homekit_sources"] == ["NRK P1", "NRK P3", "TV"]
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {"homekit_sources": []}
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert entry.options["homekit_sources"] == []

@@ -95,7 +95,8 @@
         "menu_options": {
           "zones": "Zones — occupancy, rooms, hold times, trim",
           "ducks": "Duck inputs — door/window volume capping",
-          "tunables": "Tunables — fades, thresholds, timings"
+          "tunables": "Tunables — fades, thresholds, timings",
+          "media": "Media — sources exposed to HomeKit"
         }
       },
       "zones": {
@@ -158,6 +159,16 @@
           "transition_suppression": "Ignore external volume reports within this window after any zone, duck or TV transition — the fleet is in motion.",
           "group_repair_delay": "How long the speaker group topology may deviate before it is repaired.",
           "startup_tolerance": "Volume divergence below which startup adopts the current volumes as-is instead of converging them."
+        }
+      },
+      "media": {
+        "title": "Media & HomeKit sources",
+        "description": "Choose which of the group leader's sources (Sonos favorites, radio stations, hardware inputs) the master player exposes. These appear as selectable inputs in HomeKit and on dashboards. Leave empty to expose all of them.",
+        "data": {
+          "homekit_sources": "Exposed sources"
+        },
+        "data_description": {
+          "homekit_sources": "Empty = mirror everything the leader offers. Reload the HomeKit bridge after changing this so the Home app picks up the new inputs."
         }
       }
     },
