@@ -1,10 +1,10 @@
 {
   "domain": "sonos_conductor",
   "name": "Sonos Conductor",
+  "after_dependencies": ["sonos"],
   "codeowners": ["@leiklier"],
   "config_flow": true,
   "dependencies": [],
-  "after_dependencies": ["sonos"],
   "documentation": "https://github.com/leiklier/sonos-conductor",
   "integration_type": "hub",
   "iot_class": "calculated",
