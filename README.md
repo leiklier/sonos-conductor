@@ -38,7 +38,8 @@ with `for:` timers. Sonos Conductor runs everything through a **pure,
 deterministic state machine** fed by a **single-writer event queue** with an
 **echo-suppression ledger** — races are impossible by construction, and every
 behavior is unit-tested. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and
-[docs/ENGINE_SPEC.md](docs/ENGINE_SPEC.md).
+[docs/ENGINE_SPEC.md](docs/ENGINE_SPEC.md). Migrating from a YAML setup?
+[docs/MIGRATION.md](docs/MIGRATION.md) is a worked example.
 
 ## Installation
 
