@@ -44,7 +44,7 @@ async def test_media_player_mirrors_leader_and_master(hass: HomeAssistant, monke
     assert state.state == "playing"  # leader (sofakrok) is playing
     assert state.attributes["volume_level"] == 0.2  # engine master
     assert state.attributes["is_volume_muted"] is False
-    assert state.attributes["device_class"] == "receiver"
+    assert state.attributes["device_class"] == "tv"  # HomeKit Television category
 
     # Leader metadata is mirrored.
     set_speaker(hass, SOFA, media_title="Song", media_artist="Artist")
@@ -53,12 +53,13 @@ async def test_media_player_mirrors_leader_and_master(hass: HomeAssistant, monke
     assert state.attributes["media_title"] == "Song"
     assert state.attributes["media_artist"] == "Artist"
 
-    # Leader pauses -> proxy pauses.
+    # Leader pauses -> proxy reports off (HomeKit power mirrors playback).
     set_speaker(hass, SOFA, state="paused", media_title="Song", media_artist="Artist")
     await hass.async_block_till_done()
-    assert hass.states.get(player).state == "paused"
+    assert hass.states.get(player).state == "off"
 
-    # Engine mute shows up after a publish.
+    # Engine mute shows up after a publish (attributes only exist while on).
+    set_speaker(hass, SOFA, media_title="Song", media_artist="Artist")
     fake.state.muted = True
     async_dispatcher_send(hass, controller.signal)
     await hass.async_block_till_done()
@@ -314,7 +315,7 @@ async def test_media_player_source_list_mirrors_leader(hass: HomeAssistant, monk
     set_speaker(hass, SOFA, source_list=["TV", "NRK P1", "Discover Weekly"])
     await hass.async_block_till_done()
     state = hass.states.get(player)
-    assert state.attributes["source_list"] == ["TV", "NRK P1", "Discover Weekly"]
+    assert state.attributes["source_list"] == ["Other", "TV", "NRK P1", "Discover Weekly"]
 
     # Radio favorites only appear inside media_channel; source falls back to
     # the first listed source contained in the channel string.
@@ -340,7 +341,7 @@ async def test_media_player_source_allowlist_filters(hass: HomeAssistant, monkey
 
     set_speaker(hass, SOFA, source_list=["TV", "NRK P1", "NRK P3", "Discover Weekly"])
     await hass.async_block_till_done()
-    assert hass.states.get(player).attributes["source_list"] == ["NRK P1", "NRK P3"]
+    assert hass.states.get(player).attributes["source_list"] == ["Other", "NRK P1", "NRK P3"]
 
 
 async def test_media_player_select_source_forwards_to_leader(
@@ -390,3 +391,40 @@ async def test_media_player_homekit_remote_keys_skip_tracks(
     )
     await hass.async_block_till_done()
     assert len(next_calls) == 3
+
+
+async def test_media_player_power_maps_to_playback(hass: HomeAssistant, monkeypatch) -> None:
+    """HomeKit power: turn_on plays the leader, turn_off pauses it."""
+    entry, _controller, _fake = await setup_conductor(hass, monkeypatch)
+    player = entity_id_for(hass, "media_player", f"{entry.entry_id}_master")
+
+    play_calls = async_mock_service(hass, "media_player", "media_play")
+    pause_calls = async_mock_service(hass, "media_player", "media_pause")
+    entity = hass.data[DATA_INSTANCES]["media_player"].get_entity(player)
+
+    await entity.async_turn_on()
+    await entity.async_turn_off()
+    await hass.async_block_till_done()
+    assert [c.data["entity_id"] for c in play_calls] == [SOFA]
+    assert [c.data["entity_id"] for c in pause_calls] == [SOFA]
+
+
+async def test_media_player_other_source_absorbs_unmatched(
+    hass: HomeAssistant, monkeypatch
+) -> None:
+    """Unmatched playback shows as 'Other'; selecting 'Other' is a no-op."""
+    entry, _controller, _fake = await setup_conductor(hass, monkeypatch)
+    player = entity_id_for(hass, "media_player", f"{entry.entry_id}_master")
+
+    # Spotify Connect: not in source_list -> synthetic Other.
+    set_speaker(hass, SOFA, source_list=["TV", "NRK P1"], source="Spotify Connect")
+    await hass.async_block_till_done()
+    state = hass.states.get(player)
+    assert state.attributes["source_list"] == ["Other", "TV", "NRK P1"]
+    assert state.attributes["source"] == "Other"
+
+    select_calls = async_mock_service(hass, "media_player", "select_source")
+    entity = hass.data[DATA_INSTANCES]["media_player"].get_entity(player)
+    await entity.async_select_source("Other")
+    await hass.async_block_till_done()
+    assert select_calls == []  # synthetic input: nothing forwarded

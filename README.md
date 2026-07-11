@@ -26,10 +26,11 @@ a testable state machine replacing YAML automation sprawl.
   rooms (no more kitchen soundtrack while fetching a glass of water).
 - **Group repair** — if the Sonos group spontaneously dissolves, the conductor
   quietly reassembles it.
-- **HomeKit-friendly** — exposes a master media player suitable for a HomeKit
-  bridge: volume and play/pause from Control Center, swipe left/right in the
-  iOS Remote to skip tracks, and your Sonos favorites (radio stations,
-  playlists) plus hardware inputs appear as selectable HomeKit inputs.
+- **HomeKit-friendly** — exposes a master media player as a HomeKit
+  Television accessory: volume and play/pause from Control Center, swipe
+  left/right in the iOS Remote to skip tracks, power toggle = play/pause, and
+  your Sonos favorites (radio stations, playlists) plus hardware inputs
+  appear as selectable inputs in the Home app.
 
 ## Why an integration instead of automations
 

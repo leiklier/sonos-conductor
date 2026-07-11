@@ -115,18 +115,30 @@ targets it.
 
 ## 7. HomeKit (Control Center volume)
 
-`media_player.sonos_conductor` has device class *receiver*, which the HomeKit
-bridge exposes as a Television accessory. Add it to one of the existing
-per-area bridges (e.g. the Sofakrok bridge): Settings → Devices & services →
-HomeKit → configure bridge → include `media_player.sonos_conductor`. In iOS,
-add the **Apple TV Remote** to Control Center — selecting *Sonos Conductor*
+`media_player.sonos_conductor` has device class *tv*, which HomeKit exposes
+as a Television-category accessory — the category the Home app renders with
+the input picker and a working power toggle (*receiver*-category accessories
+only get a power button). Expose it through a HomeKit entry in **accessory
+mode** (Settings → Devices & services → HomeKit; HA requires accessory mode
+for television media players).
+
+> **Upgrading from ≤ v0.2.0:** Apple caches the accessory category at pairing
+> time. If the conductor was already paired (as a receiver), remove that
+> HomeKit entry in HA (which removes the accessory from the Home app) and add
+> a fresh accessory-mode entry — inputs and power will then render correctly.
+
+The power button maps to playback: on = play, off = pause; the entity
+correspondingly reports `off` whenever the leader is not playing. In iOS, add
+the **Apple TV Remote** to Control Center — selecting *Sonos Conductor*
 there gives play/pause plus hardware-volume-button control of the master
 volume, and swiping left/right on the touch surface skips tracks (the
 integration translates the bridge's remote-key events).
 
 **Radio stations & inputs**: the accessory also exposes the leader's sources
 (Sonos favorites — radio stations, playlists — and the Arc's TV input) as
-HomeKit inputs, so you can switch station from the Home app tile. Limit which
-sources appear under *Configure → Media — sources exposed to HomeKit*
-(empty = all). Reload the HomeKit bridge after changing the selection so the
-Home app picks up the new inputs.
+HomeKit inputs, so you can switch station from the Home app tile. A synthetic
+**Other** input absorbs anything no favorite matches (Spotify Connect,
+announcements); selecting it does nothing. Limit which sources appear under
+*Configure → Media — sources exposed to HomeKit* (empty = all). Reload the
+HomeKit entry after changing the selection so the Home app picks up the new
+inputs.
