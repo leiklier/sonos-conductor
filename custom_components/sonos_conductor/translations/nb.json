@@ -1,0 +1,182 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Sonos Conductor",
+        "description": "Tilstedeværelsesstyrt volumorkestrering for flere rom med Sonos. Velg høyttalerne dirigenten skal styre — du setter opp én sone per høyttaler i de neste stegene.",
+        "data": {
+          "speakers": "Høyttalere"
+        },
+        "data_description": {
+          "speakers": "Sonos-mediespillere funnet i entitetsregisteret ditt. Music Assistant-speilinger og spillere som ikke er Sonos, utelates automatisk."
+        }
+      },
+      "zone": {
+        "title": "Sone {zone_number} av {zone_count}: {speaker}",
+        "description": "Hver høyttaler får én sone: tilstedeværelsesinngangene som gjør den hørbar, og hvordan den spiller sammen med resten av huset. Forslagene nedenfor kommer fra høyttalerens område.",
+        "data": {
+          "name": "Sonenavn",
+          "room": "Akustisk rom",
+          "occupancy": "Tilstedeværelsessensorer",
+          "tvs": "TV-mediespillere",
+          "hold_seconds": "Holdetid",
+          "fallback": "Reservesone",
+          "trim": "Lydstyrkejustering",
+          "dock_sensor": "Dokkingsensor"
+        },
+        "data_description": {
+          "name": "Visningsnavn for sonen. Det blir også sonens interne ID, så det må være unikt.",
+          "room": "Soner som deler luft, får samme romnavn (for eksempel heter både en åpen stue og spisekroken \"stue\"). Høyttalere i samme rom skaleres med 1/√N slik at den opplevde samlede lydstyrken holder seg konstant. Samme tekst = samme rom.",
+          "occupancy": "Bevegelses- eller tilstedeværelsessensorer. Så lenge minst én av dem er på, er denne sonen hørbar.",
+          "tvs": "TV-spillere knyttet til denne sonen. Mens en TV spiller, regnes sonen som i bruk, og romskalaen låses til 1,0 slik at TV-fjernkontrollen styrer volumet 1:1.",
+          "hold_seconds": "Hvor lenge det kan mangle tilstedeværelse før sonen tones ut. Øk verdien for rom du bare forlater en kort stund, som et kjøkken.",
+          "fallback": "Reservesonen holder seg hørbar når ingen andre soner er aktive, slik at musikken aldri stilner mens noen er hjemme. Høyst én sone kan være reservesone.",
+          "trim": "Lydstyrkeforhold som kompenserer for maskinvareforskjeller (for eksempel Move 1,2, Era 100 1,1, Arc 1,0). En høyttalers målvolum er hovedvolum × justering × romskala.",
+          "dock_sensor": "Batteriladesensor som melder fra når denne bærbare høyttaleren står i dokk. Når høyttaleren er udokket, spiller den for seg selv, og dirigenten lar den være i fred. La feltet stå tomt for høyttalere som ikke er bærbare."
+        }
+      },
+      "ducks": {
+        "title": "Innganger for volumsenking",
+        "description": "Binære sensorer (dører, vinduer, porter) som midlertidig begrenser volumet på alle spillende høyttalere mens de er aktive — for eksempel ved å dempe musikken mens ytterdøren står åpen.",
+        "data": {
+          "duck_entities": "Sensorer for volumsenking",
+          "duck_volume": "Senket volum",
+          "release_fade": "Tilbaketoning"
+        },
+        "data_description": {
+          "duck_entities": "Så lenge én av disse sensorene er på, begrenses alle spillende høyttalere til det senkede volumet.",
+          "duck_volume": "Absolutt volumgrense mens volumet er senket. Er flere innganger aktive samtidig, gjelder den laveste grensen.",
+          "release_fade": "Sekunder brukt på å tone tilbake til normalt volum etter at den siste volumsenkingen er over."
+        }
+      },
+      "tunables": {
+        "title": "Finjustering",
+        "description": "Finjustering av toninger og synkronisering. Standardverdiene speiler en gjennomprøvd installasjon; du kan endre dem når som helst via Konfigurer-knappen på integrasjonen.",
+        "data": {
+          "fade_in": "Inntoningstid",
+          "fade_out": "Uttoningstid",
+          "rebalance_fade": "Rebalanseringstoning",
+          "master_fade": "Hovedvolumtoning",
+          "sync_threshold": "Synkroniseringsterskel",
+          "external_debounce": "Ekstern stabiliseringstid",
+          "transition_suppression": "Undertrykkelse etter overganger",
+          "group_repair_delay": "Forsinkelse for gruppereparasjon",
+          "startup_tolerance": "Oppstartstoleranse"
+        },
+        "data_description": {
+          "fade_in": "Sekunder brukt på å tone inn en sone når den blir aktiv.",
+          "fade_out": "Sekunder brukt på å tone ut en sone etter at holdetiden er utløpt.",
+          "rebalance_fade": "Toning som brukes når allerede hørbare høyttalere rebalanseres (endringer i romskala eller omvendt synkronisering).",
+          "master_fade": "Toning når hovedvolumet spres ut til høyttalerne. La verdien stå på 0 for å følge en volumglidebryter tett.",
+          "sync_threshold": "Minste beregnede endring i hovedvolumet før en ekstern volumendring synkroniseres tilbake til hovedvolumet.",
+          "external_debounce": "Sekunder en ekstern volumrapport må holde seg stabil før den blir stolt på (fanger opp at glidebrytere dras i Sonos-appen).",
+          "transition_suppression": "Ignorer eksterne volumrapporter i dette tidsvinduet etter en sone-, volumsenkings- eller TV-overgang — hele anlegget er i bevegelse.",
+          "group_repair_delay": "Hvor lenge høyttalergruppens topologi kan avvike før den repareres.",
+          "startup_tolerance": "Volumavvik under denne grensen gjør at oppstarten beholder gjeldende volumer som de er, i stedet for å jevne dem ut."
+        }
+      }
+    },
+    "error": {
+      "no_speakers_selected": "Velg minst én høyttaler.",
+      "invalid_zone_name": "Sonenavnet må inneholde minst én bokstav eller ett siffer.",
+      "duplicate_zone_name": "En annen sone bruker allerede dette navnet. Sonenavn må være unike.",
+      "multiple_fallback_zones": "Bare én sone kan være reservesone, og en annen sone er det allerede. Slå det av der først."
+    },
+    "abort": {
+      "already_configured": "Sonos Conductor er allerede satt opp. Bare én instans støttes — bruk Konfigurer på den eksisterende oppføringen i stedet.",
+      "no_speakers_found": "Fant ingen Sonos-mediespillere i entitetsregisteret. Sett opp Sonos-integrasjonen først, og legg deretter til Sonos Conductor."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Alternativer for Sonos Conductor",
+        "description": "Velg en del å redigere. Endringene trer i kraft når delen lagres; å legge til eller fjerne høyttalere krever at integrasjonen legges til på nytt.",
+        "menu_options": {
+          "zones": "Soner — tilstedeværelse, rom, holdetider, justering",
+          "ducks": "Volumsenking — dører/vinduer begrenser volumet",
+          "tunables": "Finjustering — toninger, terskler, tidsstyring",
+          "media": "Media — kilder som eksponeres til HomeKit"
+        }
+      },
+      "zones": {
+        "title": "Sone {zone_number} av {zone_count}: {zone}",
+        "description": "Juster inngangene og oppførselen til denne sonen. Gjeldende innstillinger er forhåndsutfylt; automatisk oppdaging fyller bare inn det som mangler.",
+        "data": {
+          "room": "Akustisk rom",
+          "occupancy": "Tilstedeværelsessensorer",
+          "tvs": "TV-mediespillere",
+          "hold_seconds": "Holdetid",
+          "fallback": "Reservesone",
+          "trim": "Lydstyrkejustering",
+          "dock_sensor": "Dokkingsensor"
+        },
+        "data_description": {
+          "room": "Soner som deler luft, får samme romnavn. Høyttalere i samme rom skaleres med 1/√N slik at den opplevde samlede lydstyrken holder seg konstant. Samme tekst = samme rom.",
+          "occupancy": "Bevegelses- eller tilstedeværelsessensorer. Så lenge minst én av dem er på, er denne sonen hørbar.",
+          "tvs": "TV-spillere knyttet til denne sonen. Mens en TV spiller, regnes sonen som i bruk, og romskalaen låses til 1,0 slik at TV-fjernkontrollen styrer volumet 1:1.",
+          "hold_seconds": "Hvor lenge det kan mangle tilstedeværelse før sonen tones ut.",
+          "fallback": "Reservesonen holder seg hørbar når ingen andre soner er aktive. Høyst én sone kan være reservesone.",
+          "trim": "Lydstyrkeforhold som kompenserer for maskinvareforskjeller. En høyttalers målvolum er hovedvolum × justering × romskala.",
+          "dock_sensor": "Batteriladesensor som melder fra når denne bærbare høyttaleren står i dokk. La feltet stå tomt for høyttalere som ikke er bærbare."
+        }
+      },
+      "ducks": {
+        "title": "Innganger for volumsenking",
+        "description": "Binære sensorer som midlertidig begrenser volumet på alle spillende høyttalere mens de er aktive. Sensorer som allerede er satt opp, er forhåndsvalgt; fjern markeringen for å fjerne dem.",
+        "data": {
+          "duck_entities": "Sensorer for volumsenking",
+          "duck_volume": "Senket volum",
+          "release_fade": "Tilbaketoning"
+        },
+        "data_description": {
+          "duck_entities": "Så lenge én av disse sensorene er på, begrenses alle spillende høyttalere til det senkede volumet.",
+          "duck_volume": "Absolutt volumgrense mens volumet er senket. Er flere innganger aktive samtidig, gjelder den laveste grensen.",
+          "release_fade": "Sekunder brukt på å tone tilbake til normalt volum etter at den siste volumsenkingen er over."
+        }
+      },
+      "tunables": {
+        "title": "Finjustering",
+        "description": "Finjustering av toninger og synkronisering. Gjeldende verdier er forhåndsutfylt.",
+        "data": {
+          "fade_in": "Inntoningstid",
+          "fade_out": "Uttoningstid",
+          "rebalance_fade": "Rebalanseringstoning",
+          "master_fade": "Hovedvolumtoning",
+          "sync_threshold": "Synkroniseringsterskel",
+          "external_debounce": "Ekstern stabiliseringstid",
+          "transition_suppression": "Undertrykkelse etter overganger",
+          "group_repair_delay": "Forsinkelse for gruppereparasjon",
+          "startup_tolerance": "Oppstartstoleranse"
+        },
+        "data_description": {
+          "fade_in": "Sekunder brukt på å tone inn en sone når den blir aktiv.",
+          "fade_out": "Sekunder brukt på å tone ut en sone etter at holdetiden er utløpt.",
+          "rebalance_fade": "Toning som brukes når allerede hørbare høyttalere rebalanseres (endringer i romskala eller omvendt synkronisering).",
+          "master_fade": "Toning når hovedvolumet spres ut til høyttalerne. La verdien stå på 0 for å følge en volumglidebryter tett.",
+          "sync_threshold": "Minste beregnede endring i hovedvolumet før en ekstern volumendring synkroniseres tilbake til hovedvolumet.",
+          "external_debounce": "Sekunder en ekstern volumrapport må holde seg stabil før den blir stolt på (fanger opp at glidebrytere dras i Sonos-appen).",
+          "transition_suppression": "Ignorer eksterne volumrapporter i dette tidsvinduet etter en sone-, volumsenkings- eller TV-overgang — hele anlegget er i bevegelse.",
+          "group_repair_delay": "Hvor lenge høyttalergruppens topologi kan avvike før den repareres.",
+          "startup_tolerance": "Volumavvik under denne grensen gjør at oppstarten beholder gjeldende volumer som de er, i stedet for å jevne dem ut."
+        }
+      },
+      "media": {
+        "title": "Media- og HomeKit-kilder",
+        "description": "Velg hvilke av gruppelederens kilder (Sonos-favoritter, radiostasjoner, fysiske innganger) hovedspilleren skal eksponere. De vises som valgbare innganger i HomeKit og på dashbord. La stå tomt for å eksponere alle.",
+        "data": {
+          "homekit_sources": "Eksponerte kilder"
+        },
+        "data_description": {
+          "homekit_sources": "Tomt = speil alt lederen tilbyr. Last inn HomeKit-broen på nytt etter endringer, slik at Hjem-appen plukker opp de nye inngangene."
+        }
+      }
+    },
+    "error": {
+      "multiple_fallback_zones": "Bare én sone kan være reservesone, og en annen sone er det allerede. Slå det av der først."
+    },
+    "abort": {
+      "no_zones_configured": "Det finnes ingen soner å redigere. Fjern integrasjonen og legg den til på nytt for å velge høyttalere."
+    }
+  }
+}
