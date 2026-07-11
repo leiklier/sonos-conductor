@@ -120,5 +120,13 @@ bridge exposes as a Television accessory. Add it to one of the existing
 per-area bridges (e.g. the Sofakrok bridge): Settings → Devices & services →
 HomeKit → configure bridge → include `media_player.sonos_conductor`. In iOS,
 add the **Apple TV Remote** to Control Center — selecting *Sonos Conductor*
-there gives play/pause/skip plus hardware-volume-button control of the
-master volume.
+there gives play/pause plus hardware-volume-button control of the master
+volume, and swiping left/right on the touch surface skips tracks (the
+integration translates the bridge's remote-key events).
+
+**Radio stations & inputs**: the accessory also exposes the leader's sources
+(Sonos favorites — radio stations, playlists — and the Arc's TV input) as
+HomeKit inputs, so you can switch station from the Home app tile. Limit which
+sources appear under *Configure → Media — sources exposed to HomeKit*
+(empty = all). Reload the HomeKit bridge after changing the selection so the
+Home app picks up the new inputs.

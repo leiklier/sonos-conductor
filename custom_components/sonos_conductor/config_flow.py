@@ -39,6 +39,7 @@ from homeassistant.util import slugify
 from . import discovery
 from .const import (
     CONF_DUCK_INPUTS,
+    CONF_HOMEKIT_SOURCES,
     CONF_PRIMARY_SPEAKER,
     CONF_SPEAKERS,
     CONF_TUNABLES,
@@ -344,7 +345,39 @@ class SonosConductorOptionsFlow(OptionsFlow):
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Section menu."""
-        return self.async_show_menu(step_id="init", menu_options=["zones", "ducks", "tunables"])
+        return self.async_show_menu(
+            step_id="init", menu_options=["zones", "ducks", "tunables", "media"]
+        )
+
+    async def async_step_media(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """Choose which leader sources the master player exposes (e.g. to HomeKit)."""
+        if user_input is not None:
+            return self._save({CONF_HOMEKIT_SOURCES: user_input.get("homekit_sources", [])})
+
+        stored: list[str] = list(self.config_entry.options.get(CONF_HOMEKIT_SOURCES, []))
+        # Offer the leader's current sources; keep stored entries selectable
+        # even if the leader is momentarily unavailable.
+        leader = self.config_entry.options.get(CONF_PRIMARY_SPEAKER)
+        available: list[str] = []
+        if leader and (state := self.hass.states.get(leader)):
+            available = list(state.attributes.get("source_list") or [])
+        options = sorted(set(available) | set(stored))
+        schema = self.add_suggested_values_to_schema(
+            vol.Schema(
+                {
+                    vol.Optional("homekit_sources", default=[]): SelectSelector(
+                        SelectSelectorConfig(
+                            options=options,
+                            multiple=True,
+                            custom_value=True,
+                            mode=SelectSelectorMode.DROPDOWN,
+                        )
+                    )
+                }
+            ),
+            {"homekit_sources": stored},
+        )
+        return self.async_show_form(step_id="media", data_schema=schema)
 
     async def async_step_zones(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Re-run the zone step for every stored zone, seeded from options."""

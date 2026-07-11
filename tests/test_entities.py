@@ -21,7 +21,7 @@ from custom_components.sonos_conductor.core.events import (
     SetTvSolo,
 )
 from custom_components.sonos_conductor.core.model import ZonePhase
-from tests.test_controller import MOVE, SOFA, set_speaker, setup_conductor
+from tests.test_controller import MOVE, OPTIONS, SOFA, set_speaker, setup_conductor
 
 
 def entity_id_for(hass: HomeAssistant, platform: str, unique_id: str) -> str:
@@ -305,3 +305,88 @@ async def test_unconfigured_entry_creates_no_entities(hass: HomeAssistant) -> No
     assert await hass.config_entries.async_unload(entry.entry_id)
     await hass.async_block_till_done()
     assert entry.state.value == "not_loaded"
+
+
+async def test_media_player_source_list_mirrors_leader(hass: HomeAssistant, monkeypatch) -> None:
+    entry, _controller, _fake = await setup_conductor(hass, monkeypatch)
+    player = entity_id_for(hass, "media_player", f"{entry.entry_id}_master")
+
+    set_speaker(hass, SOFA, source_list=["TV", "NRK P1", "Discover Weekly"])
+    await hass.async_block_till_done()
+    state = hass.states.get(player)
+    assert state.attributes["source_list"] == ["TV", "NRK P1", "Discover Weekly"]
+
+    # Radio favorites only appear inside media_channel; source falls back to
+    # the first listed source contained in the channel string.
+    set_speaker(
+        hass,
+        SOFA,
+        source_list=["TV", "NRK P1", "Discover Weekly"],
+        media_channel="NRK P1 Rogaland",
+    )
+    await hass.async_block_till_done()
+    assert hass.states.get(player).attributes["source"] == "NRK P1"
+
+    # A recognized input reported via the leader's own source attribute wins.
+    set_speaker(hass, SOFA, source_list=["TV", "NRK P1"], source="TV")
+    await hass.async_block_till_done()
+    assert hass.states.get(player).attributes["source"] == "TV"
+
+
+async def test_media_player_source_allowlist_filters(hass: HomeAssistant, monkeypatch) -> None:
+    options = {**OPTIONS, "homekit_sources": ["NRK P1", "NRK P3"]}
+    entry, _controller, _fake = await setup_conductor(hass, monkeypatch, options=options)
+    player = entity_id_for(hass, "media_player", f"{entry.entry_id}_master")
+
+    set_speaker(hass, SOFA, source_list=["TV", "NRK P1", "NRK P3", "Discover Weekly"])
+    await hass.async_block_till_done()
+    assert hass.states.get(player).attributes["source_list"] == ["NRK P1", "NRK P3"]
+
+
+async def test_media_player_select_source_forwards_to_leader(
+    hass: HomeAssistant, monkeypatch
+) -> None:
+    entry, _controller, _fake = await setup_conductor(hass, monkeypatch)
+    player = entity_id_for(hass, "media_player", f"{entry.entry_id}_master")
+
+    select_calls = async_mock_service(hass, "media_player", "select_source")
+    entity = hass.data[DATA_INSTANCES]["media_player"].get_entity(player)
+    await entity.async_select_source("NRK P1")
+    await hass.async_block_till_done()
+    assert len(select_calls) == 1
+    assert select_calls[0].data == {"entity_id": SOFA, "source": "NRK P1"}
+
+
+async def test_media_player_homekit_remote_keys_skip_tracks(
+    hass: HomeAssistant, monkeypatch
+) -> None:
+    """arrow_right/left (and skip keys) from the HomeKit remote skip tracks."""
+    entry, _controller, _fake = await setup_conductor(hass, monkeypatch)
+    player = entity_id_for(hass, "media_player", f"{entry.entry_id}_master")
+
+    next_calls = async_mock_service(hass, "media_player", "media_next_track")
+    prev_calls = async_mock_service(hass, "media_player", "media_previous_track")
+
+    for key, next_expected, prev_expected in (
+        ("arrow_right", 1, 0),
+        ("next_track", 2, 0),
+        ("fast_forward", 3, 0),
+        ("arrow_left", 3, 1),
+        ("previous_track", 3, 2),
+        ("rewind", 3, 3),
+        ("select", 3, 3),  # unrelated keys are ignored
+        ("arrow_up", 3, 3),
+    ):
+        hass.bus.async_fire("homekit_tv_remote_key_pressed", {"key_name": key, "entity_id": player})
+        await hass.async_block_till_done()
+        assert len(next_calls) == next_expected, key
+        assert len(prev_calls) == prev_expected, key
+    assert all(c.data["entity_id"] == SOFA for c in [*next_calls, *prev_calls])
+
+    # Events aimed at other entities are ignored.
+    hass.bus.async_fire(
+        "homekit_tv_remote_key_pressed",
+        {"key_name": "arrow_right", "entity_id": "media_player.other_tv"},
+    )
+    await hass.async_block_till_done()
+    assert len(next_calls) == 3

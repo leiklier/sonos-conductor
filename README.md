@@ -27,7 +27,9 @@ a testable state machine replacing YAML automation sprawl.
 - **Group repair** — if the Sonos group spontaneously dissolves, the conductor
   quietly reassembles it.
 - **HomeKit-friendly** — exposes a master media player suitable for a HomeKit
-  bridge: play/pause/skip and volume from Control Center.
+  bridge: volume and play/pause from Control Center, swipe left/right in the
+  iOS Remote to skip tracks, and your Sonos favorites (radio stations,
+  playlists) plus hardware inputs appear as selectable HomeKit inputs.
 
 ## Why an integration instead of automations
 
