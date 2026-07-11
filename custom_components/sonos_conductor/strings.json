@@ -3,11 +3,169 @@
     "step": {
       "user": {
         "title": "Sonos Conductor",
-        "description": "Set up presence-aware multi-room volume orchestration for your Sonos speakers."
+        "description": "Presence-aware multi-room volume orchestration for Sonos. Pick the speakers the conductor should manage — you will configure one zone per speaker in the next steps.",
+        "data": {
+          "speakers": "Speakers"
+        },
+        "data_description": {
+          "speakers": "Sonos media players found in your entity registry. Music Assistant mirrors and non-Sonos players are excluded automatically."
+        }
+      },
+      "zone": {
+        "title": "Zone {zone_number} of {zone_count}: {speaker}",
+        "description": "Each speaker gets one zone: the presence inputs that make it audible, and how it blends with the rest of the house. The suggestions below come from the speaker's area.",
+        "data": {
+          "name": "Zone name",
+          "room": "Acoustic room",
+          "occupancy": "Occupancy sensors",
+          "tvs": "TV media players",
+          "hold_seconds": "Hold time",
+          "fallback": "Fallback zone",
+          "trim": "Loudness trim",
+          "dock_sensor": "Dock sensor"
+        },
+        "data_description": {
+          "name": "Display name for the zone. It also becomes the zone's internal ID, so it must be unique.",
+          "room": "Zones that share air get the same room name (for example, an open living room and its dining nook both say \"stue\"). Speakers in one room are scaled by 1/√N so the perceived total loudness stays constant. Same text = same room.",
+          "occupancy": "Motion, occupancy or presence sensors. While any of them is on, this zone is audible.",
+          "tvs": "TV players attached to this zone. While a TV plays, the zone counts as occupied and its room scale is forced to 1.0 so a TV remote gets a 1:1 volume mapping.",
+          "hold_seconds": "How long occupancy may be absent before the zone fades out. Raise it for rooms you briefly step out of, like a kitchen.",
+          "fallback": "The fallback zone stays audible when no other zone is active, so the music never dies while someone is home. At most one zone can be the fallback.",
+          "trim": "Loudness ratio compensating for hardware differences (for example Move 1.2, Era 100 1.1, Arc 1.0). A speaker's target volume is master × trim × room scale.",
+          "dock_sensor": "Battery-charging sensor that reports when this portable speaker is docked. While undocked, the speaker runs standalone and the conductor leaves it alone. Leave empty for non-portable speakers."
+        }
+      },
+      "ducks": {
+        "title": "Duck inputs",
+        "description": "Binary sensors (doors, windows, gates) that temporarily cap all playing speakers while active — for example, dropping the music while the entrance door is open.",
+        "data": {
+          "duck_entities": "Duck sensors",
+          "duck_volume": "Duck volume",
+          "release_fade": "Release fade"
+        },
+        "data_description": {
+          "duck_entities": "While any of these sensors is on, every playing speaker is capped at the duck volume.",
+          "duck_volume": "Absolute volume cap while ducked. If several duck inputs are active, the lowest cap wins.",
+          "release_fade": "Seconds to fade back to normal volume after the last duck input clears."
+        }
+      },
+      "tunables": {
+        "title": "Tunables",
+        "description": "Fine-tuning for fades and synchronization. The defaults mirror the behavior of a battle-tested installation; you can revisit them anytime via the integration's Configure button.",
+        "data": {
+          "fade_in": "Fade-in duration",
+          "fade_out": "Fade-out duration",
+          "rebalance_fade": "Rebalance fade",
+          "master_fade": "Master fade",
+          "sync_threshold": "Sync threshold",
+          "external_debounce": "External debounce",
+          "transition_suppression": "Transition suppression",
+          "group_repair_delay": "Group repair delay",
+          "startup_tolerance": "Startup tolerance"
+        },
+        "data_description": {
+          "fade_in": "Seconds to fade a zone in when it becomes active.",
+          "fade_out": "Seconds to fade a zone out after its hold time expires.",
+          "rebalance_fade": "Fade used when already-audible speakers are rebalanced (room scale or reverse sync changes).",
+          "master_fade": "Fade for master-volume fan-out. Keep at 0 to track a volume slider tightly.",
+          "sync_threshold": "Minimum implied master change before an external volume change is synced back to the master.",
+          "external_debounce": "Seconds an external volume report must stay stable before it is trusted (absorbs slider drags in the Sonos app).",
+          "transition_suppression": "Ignore external volume reports within this window after any zone, duck or TV transition — the fleet is in motion.",
+          "group_repair_delay": "How long the speaker group topology may deviate before it is repaired.",
+          "startup_tolerance": "Volume divergence below which startup adopts the current volumes as-is instead of converging them."
+        }
       }
     },
+    "error": {
+      "no_speakers_selected": "Select at least one speaker.",
+      "invalid_zone_name": "The zone name must contain at least one letter or digit.",
+      "duplicate_zone_name": "Another zone already uses this name. Zone names must be unique.",
+      "multiple_fallback_zones": "Only one zone can be the fallback, and another zone already is. Disable it there first."
+    },
     "abort": {
-      "single_instance_allowed": "Already configured. Only a single instance is supported."
+      "already_configured": "Sonos Conductor is already set up. Only a single instance is supported — use Configure on the existing entry instead.",
+      "no_speakers_found": "No Sonos media players were found in the entity registry. Set up the Sonos integration first, then add Sonos Conductor."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Sonos Conductor options",
+        "description": "Pick a section to edit. Changes apply when the section is saved; adding or removing speakers requires re-adding the integration.",
+        "menu_options": {
+          "zones": "Zones — occupancy, rooms, hold times, trim",
+          "ducks": "Duck inputs — door/window volume capping",
+          "tunables": "Tunables — fades, thresholds, timings"
+        }
+      },
+      "zones": {
+        "title": "Zone {zone_number} of {zone_count}: {zone}",
+        "description": "Adjust this zone's inputs and behavior. Current settings are prefilled; discovery only fills the gaps.",
+        "data": {
+          "room": "Acoustic room",
+          "occupancy": "Occupancy sensors",
+          "tvs": "TV media players",
+          "hold_seconds": "Hold time",
+          "fallback": "Fallback zone",
+          "trim": "Loudness trim",
+          "dock_sensor": "Dock sensor"
+        },
+        "data_description": {
+          "room": "Zones that share air get the same room name. Speakers in one room are scaled by 1/√N so the perceived total loudness stays constant. Same text = same room.",
+          "occupancy": "Motion, occupancy or presence sensors. While any of them is on, this zone is audible.",
+          "tvs": "TV players attached to this zone. While a TV plays, the zone counts as occupied and its room scale is forced to 1.0 so a TV remote gets a 1:1 volume mapping.",
+          "hold_seconds": "How long occupancy may be absent before the zone fades out.",
+          "fallback": "The fallback zone stays audible when no other zone is active. At most one zone can be the fallback.",
+          "trim": "Loudness ratio compensating for hardware differences. A speaker's target volume is master × trim × room scale.",
+          "dock_sensor": "Battery-charging sensor that reports when this portable speaker is docked. Leave empty for non-portable speakers."
+        }
+      },
+      "ducks": {
+        "title": "Duck inputs",
+        "description": "Binary sensors that temporarily cap all playing speakers while active. Currently configured sensors are preselected; deselect to remove them.",
+        "data": {
+          "duck_entities": "Duck sensors",
+          "duck_volume": "Duck volume",
+          "release_fade": "Release fade"
+        },
+        "data_description": {
+          "duck_entities": "While any of these sensors is on, every playing speaker is capped at the duck volume.",
+          "duck_volume": "Absolute volume cap while ducked. If several duck inputs are active, the lowest cap wins.",
+          "release_fade": "Seconds to fade back to normal volume after the last duck input clears."
+        }
+      },
+      "tunables": {
+        "title": "Tunables",
+        "description": "Fine-tuning for fades and synchronization. Current values are prefilled.",
+        "data": {
+          "fade_in": "Fade-in duration",
+          "fade_out": "Fade-out duration",
+          "rebalance_fade": "Rebalance fade",
+          "master_fade": "Master fade",
+          "sync_threshold": "Sync threshold",
+          "external_debounce": "External debounce",
+          "transition_suppression": "Transition suppression",
+          "group_repair_delay": "Group repair delay",
+          "startup_tolerance": "Startup tolerance"
+        },
+        "data_description": {
+          "fade_in": "Seconds to fade a zone in when it becomes active.",
+          "fade_out": "Seconds to fade a zone out after its hold time expires.",
+          "rebalance_fade": "Fade used when already-audible speakers are rebalanced (room scale or reverse sync changes).",
+          "master_fade": "Fade for master-volume fan-out. Keep at 0 to track a volume slider tightly.",
+          "sync_threshold": "Minimum implied master change before an external volume change is synced back to the master.",
+          "external_debounce": "Seconds an external volume report must stay stable before it is trusted (absorbs slider drags in the Sonos app).",
+          "transition_suppression": "Ignore external volume reports within this window after any zone, duck or TV transition — the fleet is in motion.",
+          "group_repair_delay": "How long the speaker group topology may deviate before it is repaired.",
+          "startup_tolerance": "Volume divergence below which startup adopts the current volumes as-is instead of converging them."
+        }
+      }
+    },
+    "error": {
+      "multiple_fallback_zones": "Only one zone can be the fallback, and another zone already is. Disable it there first."
+    },
+    "abort": {
+      "no_zones_configured": "There are no zones to edit. Remove and re-add the integration to select speakers."
     }
   }
 }
