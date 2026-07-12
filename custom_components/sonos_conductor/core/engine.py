@@ -79,8 +79,6 @@ class ConductorEngine:
         #: True while the fallback zone is ACTIVE only because rule 1.5
         #: forces it (it is not occupied and has no TV playing).
         self._fallback_forced: bool = False
-        #: Zone ids currently solo-suppressed (rule 6.2), kept fresh.
-        self._suppressed: frozenset[str] = frozenset()
         self._seed(snapshot)
 
     # ------------------------------------------------------------------
@@ -116,7 +114,7 @@ class ConductorEngine:
             state.zones[zone.zone_id] = ZoneState(phase=phase, occupied=occupied, tv_playing=tv)
         for duck in self.config.duck_inputs:
             state.duck_active[duck.input_id] = bool(snapshot.duck_active.get(duck.input_id, False))
-        self._suppressed = reconcile.compute_suppressed(self)
+        state.suppressed = reconcile.compute_suppressed(self)
         # Fallback forcing (rule 1.5) applies to the seeded phases too.
         fallback = self._fallback_zone()
         if (

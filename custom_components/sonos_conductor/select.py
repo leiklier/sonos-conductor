@@ -37,6 +37,9 @@ class SonosConductorTvSoloSelect(ConductorEntity, SelectEntity, RestoreEntity):
     """
 
     _attr_translation_key = "tv_solo"
+    # Hardcoded English name like every sibling entity: keeps the generated
+    # entity id stable (select.sonos_conductor_tv_solo) on any HA language.
+    _attr_name = "TV solo"
     _attr_entity_category = EntityCategory.CONFIG
     _attr_options: ClassVar[list[str]] = [mode.value for mode in TvSoloMode]
 

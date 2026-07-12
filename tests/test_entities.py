@@ -292,9 +292,11 @@ async def test_zone_sensor_tv_solo_suppression(hass: HomeAssistant, monkeypatch)
     kjokken = entity_id_for(hass, "binary_sensor", f"{entry.entry_id}_zone_kjokken")
     spisebord = entity_id_for(hass, "binary_sensor", f"{entry.entry_id}_zone_spisebord")
 
-    # TV playing in stue with same_room: kjokken is suppressed -> target 0,
-    # but spisebord (same room as the TV) keeps a target.
+    # The sensor renders the engine's published suppression set (rule 6.2)
+    # instead of re-deriving it. same_room: the engine suppresses kjokken,
+    # spisebord (same room as the TV) keeps a target.
     fake.state.tv_solo_mode = TvSoloMode.SAME_ROOM
+    fake.state.suppressed = frozenset({"kjokken"})
     fake.state.zones["sofakrok"].phase = ZonePhase.ACTIVE
     fake.state.zones["sofakrok"].tv_playing = True
     fake.state.zones["kjokken"].phase = ZonePhase.ACTIVE
@@ -309,8 +311,10 @@ async def test_zone_sensor_tv_solo_suppression(hass: HomeAssistant, monkeypatch)
     assert state.attributes["target_volume"] == 0.0  # but solo-suppressed
     assert hass.states.get(spisebord).attributes["target_volume"] > 0.0
 
-    # tv_zone suppresses the same-room zone too; only the TV zone plays.
+    # tv_zone: the engine also suppresses the same-room zone; only the TV
+    # zone plays.
     fake.state.tv_solo_mode = TvSoloMode.TV_ZONE
+    fake.state.suppressed = frozenset({"kjokken", "spisebord"})
     async_dispatcher_send(hass, controller.signal)
     await hass.async_block_till_done()
 

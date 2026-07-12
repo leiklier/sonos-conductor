@@ -69,7 +69,7 @@ def is_audible(engine: ConductorEngine, zone_id: str) -> bool:
     """audible(zone) per spec section 0: phase in {ACTIVE, RELEASING} and
     not solo-suppressed. Fallback forcing is materialized in phase."""
     zone_state = engine.state.zones[zone_id]
-    return zone_state.phase in AUDIBLE_PHASES and zone_id not in engine._suppressed
+    return zone_state.phase in AUDIBLE_PHASES and zone_id not in engine.state.suppressed
 
 
 def room_scale(engine: ConductorEngine, room_id: str) -> float:
@@ -101,6 +101,6 @@ def compute_suppressed(engine: ConductorEngine) -> frozenset[str]:
 
 def update_suppression(engine: ConductorEngine, now: float) -> None:
     suppressed = compute_suppressed(engine)
-    if suppressed != engine._suppressed:
-        engine._suppressed = suppressed
+    if suppressed != engine.state.suppressed:
+        engine.state.suppressed = suppressed
         engine._mode_change_at = now  # counts as a transition (6.2)

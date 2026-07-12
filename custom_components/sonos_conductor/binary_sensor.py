@@ -1,8 +1,9 @@
 """Per-zone audibility sensors (replace the legacy *_audio_zone helpers).
 
 ``on`` mirrors the engine's zone phase (ACTIVE/RELEASING). The attributes
-additionally compute audibility and room scale the same way the engine does
-(solo suppression included) so dashboards can see the effective target.
+additionally derive audibility and room scale from the engine's published
+state (``EngineState.suppressed``, rule 6.2) so dashboards can see the
+effective target without re-implementing suppression.
 """
 
 from __future__ import annotations
@@ -16,39 +17,24 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .const import DOMAIN
 from .controller import ConductorEntity, SonosConductorController
-from .core.model import ConductorConfig, EngineState, TvSoloMode, ZoneConfig, ZonePhase
+from .core.model import ConductorConfig, EngineState, ZoneConfig, ZonePhase
 from .core.volume_math import room_scale, speaker_target
 
 AUDIBLE_PHASES = (ZonePhase.ACTIVE, ZonePhase.RELEASING)
 
 
-def _tv_zones(config: ConductorConfig, state: EngineState) -> list[ZoneConfig]:
-    """Audible-phase zones whose TV is playing."""
-    zones: list[ZoneConfig] = []
-    for zone in config.zones:
-        zone_state = state.zones.get(zone.zone_id)
-        if zone_state is not None and zone_state.phase in AUDIBLE_PHASES and zone_state.tv_playing:
-            zones.append(zone)
-    return zones
-
-
-def _is_audible(config: ConductorConfig, state: EngineState, zone: ZoneConfig) -> bool:
-    """Mirror the engine's audibility rule (phase + tv-solo suppression)."""
+def _is_audible(state: EngineState, zone: ZoneConfig) -> bool:
+    """The engine's audibility rule over its published state."""
     zone_state = state.zones.get(zone.zone_id)
-    if zone_state is None or zone_state.phase not in AUDIBLE_PHASES:
-        return False
-    if state.tv_solo_mode is TvSoloMode.OFF:
-        return True
-    tv_zones = _tv_zones(config, state)
-    if not tv_zones:
-        return True
-    if state.tv_solo_mode is TvSoloMode.TV_ZONE:
-        return zone.zone_id in {z.zone_id for z in tv_zones}
-    return zone.room_id in {z.room_id for z in tv_zones}  # SAME_ROOM
+    return (
+        zone_state is not None
+        and zone_state.phase in AUDIBLE_PHASES
+        and zone.zone_id not in state.suppressed
+    )
 
 
 def _room_scale_for(config: ConductorConfig, state: EngineState, room_id: str) -> float:
-    audible = [z for z in config.zones_in_room(room_id) if _is_audible(config, state, z)]
+    audible = [z for z in config.zones_in_room(room_id) if _is_audible(state, z)]
     tv_active = any(state.zones[z.zone_id].tv_playing for z in audible)
     return room_scale(len(audible), tv_active)
 
@@ -91,7 +77,7 @@ class SonosConductorZoneSensor(ConductorEntity, BinarySensorEntity):
             return {"room": self._zone.room_id}
         scale = _room_scale_for(config, state, self._zone.room_id)
         trim = config.speaker(self._zone.speaker_id).trim
-        audible = _is_audible(config, state, self._zone)
+        audible = _is_audible(state, self._zone)
         return {
             "phase": str(zone_state.phase),
             "occupied": zone_state.occupied,

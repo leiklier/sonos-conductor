@@ -182,7 +182,6 @@
   "entity": {
     "select": {
       "tv_solo": {
-        "name": "TV solo",
         "state": {
           "off": "Off",
           "same_room": "Same room",

@@ -182,7 +182,6 @@
   "entity": {
     "select": {
       "tv_solo": {
-        "name": "TV-solomodus",
         "state": {
           "off": "Av",
           "same_room": "Samme rom",

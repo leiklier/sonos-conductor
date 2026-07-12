@@ -167,6 +167,9 @@ class EngineState:
     enabled: bool = True
     tv_solo_mode: TvSoloMode = TvSoloMode.OFF
     keep_grouped: bool = True
+    #: Zone ids currently solo-suppressed (rule 6.2). Engine-maintained,
+    #: published so the adapter never re-derives suppression itself.
+    suppressed: frozenset[str] = frozenset()
     zones: dict[str, ZoneState] = field(default_factory=dict)
     speakers: dict[str, SpeakerState] = field(default_factory=dict)
     duck_active: dict[str, bool] = field(default_factory=dict)
