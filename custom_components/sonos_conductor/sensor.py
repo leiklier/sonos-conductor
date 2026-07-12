@@ -28,7 +28,7 @@ class SonosConductorStateSensor(ConductorEntity, SensorEntity):
     """Engine state at a glance."""
 
     _attr_name = "State"
-    _attr_icon = "mdi:tune"
+    _attr_translation_key = "state"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     def __init__(self, controller: SonosConductorController) -> None:

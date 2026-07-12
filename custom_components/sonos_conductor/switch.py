@@ -19,11 +19,14 @@ from .core.model import EngineState
 
 @dataclass(frozen=True, slots=True)
 class ConductorSwitchDescription:
-    """Maps a switch to its engine-state reader and command event."""
+    """Maps a switch to its engine-state reader and command event.
+
+    ``key`` doubles as the entity's ``translation_key``, wiring it to the
+    state-aware icon defined for it in icons.json.
+    """
 
     key: str
     name: str
-    icon: str
     entity_category: EntityCategory | None
     is_on_fn: Callable[[EngineState], bool]
     event_fn: Callable[[bool], Event]
@@ -33,7 +36,6 @@ SWITCHES: tuple[ConductorSwitchDescription, ...] = (
     ConductorSwitchDescription(
         key="enabled",
         name="Enabled",
-        icon="mdi:play-circle",
         entity_category=EntityCategory.CONFIG,
         is_on_fn=lambda state: state.enabled,
         event_fn=SetEnabled,
@@ -41,7 +43,6 @@ SWITCHES: tuple[ConductorSwitchDescription, ...] = (
     ConductorSwitchDescription(
         key="mute",
         name="Mute",
-        icon="mdi:volume-mute",
         entity_category=None,
         is_on_fn=lambda state: state.muted,
         event_fn=lambda on: SetMute(on, source="switch"),
@@ -49,7 +50,6 @@ SWITCHES: tuple[ConductorSwitchDescription, ...] = (
     ConductorSwitchDescription(
         key="tv_solo",
         name="TV solo",
-        icon="mdi:television-speaker",
         entity_category=EntityCategory.CONFIG,
         is_on_fn=lambda state: state.tv_solo,
         event_fn=SetTvSolo,
@@ -57,7 +57,6 @@ SWITCHES: tuple[ConductorSwitchDescription, ...] = (
     ConductorSwitchDescription(
         key="keep_grouped",
         name="Keep grouped",
-        icon="mdi:link-variant",
         entity_category=EntityCategory.CONFIG,
         is_on_fn=lambda state: state.keep_grouped,
         event_fn=SetKeepGrouped,
@@ -85,7 +84,7 @@ class SonosConductorSwitch(ConductorEntity, SwitchEntity):
         self._description = description
         self._attr_unique_id = f"{controller.entry.entry_id}_{description.key}"
         self._attr_name = description.name
-        self._attr_icon = description.icon
+        self._attr_translation_key = description.key
         self._attr_entity_category = description.entity_category
 
     @property
