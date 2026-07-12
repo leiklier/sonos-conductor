@@ -61,7 +61,8 @@
           "external_debounce": "Ekstern stabiliseringstid",
           "transition_suppression": "Undertrykkelse etter overganger",
           "group_repair_delay": "Forsinkelse for gruppereparasjon",
-          "startup_tolerance": "Oppstartstoleranse"
+          "startup_tolerance": "Oppstartstoleranse",
+          "night_volume_cap": "Maks volum i nattmodus"
         },
         "data_description": {
           "fade_in": "Sekunder brukt på å tone inn en sone når den blir aktiv.",
@@ -72,7 +73,8 @@
           "external_debounce": "Sekunder en ekstern volumrapport må holde seg stabil før den blir stolt på (fanger opp at glidebrytere dras i Sonos-appen).",
           "transition_suppression": "Ignorer eksterne volumrapporter i dette tidsvinduet etter en sone-, volumsenkings- eller TV-overgang — hele anlegget er i bevegelse.",
           "group_repair_delay": "Hvor lenge høyttalergruppens topologi kan avvike før den repareres.",
-          "startup_tolerance": "Volumavvik under denne grensen gjør at oppstarten beholder gjeldende volumer som de er, i stedet for å jevne dem ut."
+          "startup_tolerance": "Volumavvik under denne grensen gjør at oppstarten beholder gjeldende volumer som de er, i stedet for å jevne dem ut.",
+          "night_volume_cap": "Absolutt volumtak for alle høyttalere mens nattmodus er aktiv. Innganger for volumsenking med lavere grense gjelder fortsatt."
         }
       }
     },
@@ -147,7 +149,8 @@
           "external_debounce": "Ekstern stabiliseringstid",
           "transition_suppression": "Undertrykkelse etter overganger",
           "group_repair_delay": "Forsinkelse for gruppereparasjon",
-          "startup_tolerance": "Oppstartstoleranse"
+          "startup_tolerance": "Oppstartstoleranse",
+          "night_volume_cap": "Maks volum i nattmodus"
         },
         "data_description": {
           "fade_in": "Sekunder brukt på å tone inn en sone når den blir aktiv.",
@@ -158,7 +161,8 @@
           "external_debounce": "Sekunder en ekstern volumrapport må holde seg stabil før den blir stolt på (fanger opp at glidebrytere dras i Sonos-appen).",
           "transition_suppression": "Ignorer eksterne volumrapporter i dette tidsvinduet etter en sone-, volumsenkings- eller TV-overgang — hele anlegget er i bevegelse.",
           "group_repair_delay": "Hvor lenge høyttalergruppens topologi kan avvike før den repareres.",
-          "startup_tolerance": "Volumavvik under denne grensen gjør at oppstarten beholder gjeldende volumer som de er, i stedet for å jevne dem ut."
+          "startup_tolerance": "Volumavvik under denne grensen gjør at oppstarten beholder gjeldende volumer som de er, i stedet for å jevne dem ut.",
+          "night_volume_cap": "Absolutt volumtak for alle høyttalere mens nattmodus er aktiv. Innganger for volumsenking med lavere grense gjelder fortsatt."
         }
       },
       "media": {

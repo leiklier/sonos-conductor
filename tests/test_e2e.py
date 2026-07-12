@@ -394,6 +394,48 @@ async def test_tv_zone_mode_silences_same_room_zone(hass: HomeAssistant) -> None
     assert writes == {ERA: pytest.approx(0.22)}  # 0.2 * 1.1, unity scale
 
 
+async def test_night_mode_switch_caps_and_restores(hass: HomeAssistant) -> None:
+    """Music at normal volume; night mode on -> capped at 0.15, off -> restored."""
+    _entry, calls, n = await _setup(hass, occupied=("kjokken",))  # Move at 0.24
+    await hass.services.async_call(
+        "switch", "turn_on", {"entity_id": "switch.sonos_conductor_night_mode"}, blocking=True
+    )
+    await hass.async_block_till_done()
+    assert dict(_volume_writes(calls, n)) == {MOVE: pytest.approx(0.15)}  # capped
+    assert hass.states.get("switch.sonos_conductor_night_mode").state == "on"
+    _echo(hass, calls, n)
+    n = len(calls["volume"])
+
+    await hass.services.async_call(
+        "switch", "turn_off", {"entity_id": "switch.sonos_conductor_night_mode"}, blocking=True
+    )
+    await hass.async_block_till_done()
+    assert dict(_volume_writes(calls, n)) == {MOVE: pytest.approx(0.24)}  # restored
+    assert hass.states.get("switch.sonos_conductor_night_mode").state == "off"
+    assert _master(hass) == pytest.approx(0.2)  # master never moved
+
+
+async def test_night_mode_pulls_back_external_knob_turn(hass: HomeAssistant) -> None:
+    """R11 through the whole stack: knob above the cap -> pulled back, no sync."""
+    _entry, calls, n = await _setup(hass, occupied=("kjokken",))
+    await hass.services.async_call(
+        "switch", "turn_on", {"entity_id": "switch.sonos_conductor_night_mode"}, blocking=True
+    )
+    await hass.async_block_till_done()
+    _echo(hass, calls, n)  # Move settled at the 0.15 cap
+    n = len(calls["volume"])
+
+    _set_speaker(hass, MOVE, 0.5)  # user cranks the knob: not a conductor write
+    await hass.async_block_till_done()
+    assert dict(_volume_writes(calls, n)) == {MOVE: pytest.approx(0.15)}  # pulled back
+    _echo(hass, calls, n)
+    n = len(calls["volume"])
+
+    await _advance(hass, 3)  # any wrongly-accepted debounce would fire now
+    assert _volume_writes(calls, n) == []  # no ping-pong
+    assert _master(hass) == pytest.approx(0.2)  # master never corrupted
+
+
 async def test_group_dissolve_repaired_once(hass: HomeAssistant) -> None:
     _entry, calls, _n = await _setup(hass)
     # The group spontaneously dissolves: every speaker reports itself alone.
