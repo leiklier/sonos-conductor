@@ -178,5 +178,16 @@
     "abort": {
       "no_zones_configured": "There are no zones to edit. Remove and re-add the integration to select speakers."
     }
+  },
+  "entity": {
+    "select": {
+      "tv_solo": {
+        "state": {
+          "off": "Off",
+          "same_room": "Same room",
+          "tv_zone": "TV zone only"
+        }
+      }
+    }
   }
 }

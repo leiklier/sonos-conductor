@@ -21,6 +21,14 @@ class ZonePhase(StrEnum):
     STANDALONE = "standalone"  # speaker undocked: excluded from the conductor
 
 
+class TvSoloMode(StrEnum):
+    """How aggressively a playing TV silences the rest of the house (rule 6.2)."""
+
+    OFF = "off"  # never suppress anything
+    SAME_ROOM = "same_room"  # suppress zones in rooms without a playing TV
+    TV_ZONE = "tv_zone"  # suppress every zone except the TV zone(s) themselves
+
+
 @dataclass(frozen=True, slots=True)
 class SpeakerConfig:
     """A managed Sonos speaker."""
@@ -157,8 +165,11 @@ class EngineState:
     master: float = 0.15
     muted: bool = False
     enabled: bool = True
-    tv_solo: bool = False
+    tv_solo_mode: TvSoloMode = TvSoloMode.OFF
     keep_grouped: bool = True
+    #: Zone ids currently solo-suppressed (rule 6.2). Engine-maintained,
+    #: published so the adapter never re-derives suppression itself.
+    suppressed: frozenset[str] = frozenset()
     zones: dict[str, ZoneState] = field(default_factory=dict)
     speakers: dict[str, SpeakerState] = field(default_factory=dict)
     duck_active: dict[str, bool] = field(default_factory=dict)
@@ -185,5 +196,5 @@ class InitialSnapshot:
     master: float | None = None
     mute: bool = False
     enabled: bool = True
-    tv_solo: bool = False
+    tv_solo_mode: TvSoloMode = TvSoloMode.OFF
     keep_grouped: bool = True

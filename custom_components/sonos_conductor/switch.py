@@ -1,4 +1,4 @@
-"""Conductor switches: enabled / mute / tv_solo / keep_grouped."""
+"""Conductor switches: enabled / mute / keep_grouped."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .const import DOMAIN
 from .controller import ConductorEntity, SonosConductorController
-from .core.events import Event, SetEnabled, SetKeepGrouped, SetMute, SetTvSolo
+from .core.events import Event, SetEnabled, SetKeepGrouped, SetMute
 from .core.model import EngineState
 
 
@@ -46,13 +46,6 @@ SWITCHES: tuple[ConductorSwitchDescription, ...] = (
         entity_category=None,
         is_on_fn=lambda state: state.muted,
         event_fn=lambda on: SetMute(on, source="switch"),
-    ),
-    ConductorSwitchDescription(
-        key="tv_solo",
-        name="TV solo",
-        entity_category=EntityCategory.CONFIG,
-        is_on_fn=lambda state: state.tv_solo,
-        event_fn=SetTvSolo,
     ),
     ConductorSwitchDescription(
         key="keep_grouped",

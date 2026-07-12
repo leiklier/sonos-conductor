@@ -44,7 +44,7 @@ from .events import (
     SetMaster,
     SetMute,
     SetTrim,
-    SetTvSolo,
+    SetTvSoloMode,
     TimerFired,
     TvPlayingChanged,
 )
@@ -79,8 +79,6 @@ class ConductorEngine:
         #: True while the fallback zone is ACTIVE only because rule 1.5
         #: forces it (it is not occupied and has no TV playing).
         self._fallback_forced: bool = False
-        #: Zone ids currently solo-suppressed (rule 6.2), kept fresh.
-        self._suppressed: frozenset[str] = frozenset()
         self._seed(snapshot)
 
     # ------------------------------------------------------------------
@@ -92,7 +90,7 @@ class ConductorEngine:
         state = self.state
         state.muted = snapshot.mute
         state.enabled = snapshot.enabled
-        state.tv_solo = snapshot.tv_solo
+        state.tv_solo_mode = snapshot.tv_solo_mode
         state.keep_grouped = snapshot.keep_grouped
         for speaker in self.config.speakers:
             sid = speaker.speaker_id
@@ -116,7 +114,7 @@ class ConductorEngine:
             state.zones[zone.zone_id] = ZoneState(phase=phase, occupied=occupied, tv_playing=tv)
         for duck in self.config.duck_inputs:
             state.duck_active[duck.input_id] = bool(snapshot.duck_active.get(duck.input_id, False))
-        self._suppressed = reconcile.compute_suppressed(self)
+        state.suppressed = reconcile.compute_suppressed(self)
         # Fallback forcing (rule 1.5) applies to the seeded phases too.
         fallback = self._fallback_zone()
         if (
@@ -196,8 +194,8 @@ class ConductorEngine:
                 audio.on_set_mute(self, event, plan)
             case SetEnabled():
                 self._on_set_enabled(event, now, plan)
-            case SetTvSolo():
-                zones.on_set_tv_solo(self, event, now, plan)
+            case SetTvSoloMode():
+                zones.on_set_tv_solo_mode(self, event, now, plan)
             case SetKeepGrouped():
                 grouping.on_set_keep_grouped(self, event, plan)
             case SetTrim():

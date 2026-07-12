@@ -3,8 +3,8 @@
 Owns every phase transition: occupancy/TV-driven IDLE/ACTIVE/RELEASING
 moves (rule 1), dock-driven STANDALONE moves (rule 2 — STANDALONE is a
 :class:`~.model.ZonePhase`, so docking lives here deliberately), fallback
-forcing (rule 1.5), and the TV-solo toggle (rule 6.3) that feeds zone
-suppression.
+forcing (rule 1.5), and the TV-solo mode setting (rule 6.3) that feeds
+zone suppression.
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from . import reconcile, timers
-from .events import DockChanged, OccupancyChanged, SetTvSolo, TvPlayingChanged
+from .events import DockChanged, OccupancyChanged, SetTvSoloMode, TvPlayingChanged
 from .grouping import evaluate_group_repair
 from .model import SpeakerState, ZoneConfig, ZonePhase, ZoneState
 from .reconcile import AUDIBLE_PHASES
@@ -250,8 +250,10 @@ def _retire_forced_fallback(
 # ---------------------------------------------------------------------
 
 
-def on_set_tv_solo(engine: ConductorEngine, event: SetTvSolo, now: float, plan: Plan) -> None:
-    engine.state.tv_solo = event.enabled  # 6.3
+def on_set_tv_solo_mode(
+    engine: ConductorEngine, event: SetTvSoloMode, now: float, plan: Plan
+) -> None:
+    engine.state.tv_solo_mode = event.mode  # 6.3
     if not engine.state.enabled:
         reconcile.update_suppression(engine, now)
         return

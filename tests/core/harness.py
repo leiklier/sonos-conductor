@@ -29,6 +29,7 @@ from custom_components.sonos_conductor.core.model import (
     InitialSnapshot,
     SpeakerConfig,
     Tunables,
+    TvSoloMode,
     ZoneConfig,
 )
 
@@ -107,7 +108,7 @@ def make_snapshot(
     duck_active: dict[str, bool] | None = None,
     mute: bool = False,
     enabled: bool = True,
-    tv_solo: bool = False,
+    tv_solo_mode: TvSoloMode = TvSoloMode.OFF,
     keep_grouped: bool = True,
 ) -> InitialSnapshot:
     """A quiet house: nobody home, everything docked, grouped, converged.
@@ -137,7 +138,7 @@ def make_snapshot(
         master=master,
         mute=mute,
         enabled=enabled,
-        tv_solo=tv_solo,
+        tv_solo_mode=tv_solo_mode,
         keep_grouped=keep_grouped,
     )
 

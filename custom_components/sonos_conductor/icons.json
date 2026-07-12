@@ -30,16 +30,18 @@
           "off": "mdi:volume-high"
         }
       },
-      "tv_solo": {
-        "default": "mdi:television-speaker",
-        "state": {
-          "off": "mdi:television-speaker-off"
-        }
-      },
       "keep_grouped": {
         "default": "mdi:link-variant",
         "state": {
           "off": "mdi:link-variant-off"
+        }
+      }
+    },
+    "select": {
+      "tv_solo": {
+        "default": "mdi:television-speaker",
+        "state": {
+          "off": "mdi:television-speaker-off"
         }
       }
     },

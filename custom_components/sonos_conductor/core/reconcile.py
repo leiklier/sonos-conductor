@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from . import timers, volume_math
-from .model import ZonePhase
+from .model import TvSoloMode, ZonePhase
 
 if TYPE_CHECKING:
     from .engine import ConductorEngine
@@ -69,7 +69,7 @@ def is_audible(engine: ConductorEngine, zone_id: str) -> bool:
     """audible(zone) per spec section 0: phase in {ACTIVE, RELEASING} and
     not solo-suppressed. Fallback forcing is materialized in phase."""
     zone_state = engine.state.zones[zone_id]
-    return zone_state.phase in AUDIBLE_PHASES and zone_id not in engine._suppressed
+    return zone_state.phase in AUDIBLE_PHASES and zone_id not in engine.state.suppressed
 
 
 def room_scale(engine: ConductorEngine, room_id: str) -> float:
@@ -86,17 +86,21 @@ def duck_cap(engine: ConductorEngine) -> float | None:
 
 
 def compute_suppressed(engine: ConductorEngine) -> frozenset[str]:
-    """Zone ids solo-suppressed per rule 6.2."""
-    if not engine.state.tv_solo:
+    """Zone ids solo-suppressed per rule 6.2 (empty unless a TV is playing)."""
+    mode = engine.state.tv_solo_mode
+    if mode is TvSoloMode.OFF:
         return frozenset()
-    tv_rooms = {z.room_id for z in engine.config.zones if engine.state.zones[z.zone_id].tv_playing}
-    if not tv_rooms:
+    tv_zones = {z.zone_id for z in engine.config.zones if engine.state.zones[z.zone_id].tv_playing}
+    if not tv_zones:
         return frozenset()
+    if mode is TvSoloMode.TV_ZONE:
+        return frozenset(z.zone_id for z in engine.config.zones if z.zone_id not in tv_zones)
+    tv_rooms = {z.room_id for z in engine.config.zones if z.zone_id in tv_zones}  # SAME_ROOM
     return frozenset(z.zone_id for z in engine.config.zones if z.room_id not in tv_rooms)
 
 
 def update_suppression(engine: ConductorEngine, now: float) -> None:
     suppressed = compute_suppressed(engine)
-    if suppressed != engine._suppressed:
-        engine._suppressed = suppressed
+    if suppressed != engine.state.suppressed:
+        engine.state.suppressed = suppressed
         engine._mode_change_at = now  # counts as a transition (6.2)

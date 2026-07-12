@@ -31,7 +31,8 @@ custom_components/sonos_conductor/
 ├── config_flow.py        Config + options flow built on discovery suggestions
 ├── media_player.py       Master media player (HomeKit-friendly proxy)
 ├── number.py             Master volume + per-speaker trim
-├── switch.py             enabled / mute / tv_solo / keep_grouped
+├── switch.py             enabled / mute / keep_grouped
+├── select.py             tv_solo mode (off / same_room / tv_zone)
 ├── binary_sensor.py      Per-zone activity (replaces template helpers)
 └── sensor.py             Engine diagnostics
 ```
@@ -60,8 +61,10 @@ effects. A CI check (`tests/test_purity.py`) imports every `core` module with
   caps all playing speakers at a configured `duck_volume`. Multiple duck
   inputs stack; the lowest cap wins.
 - **TV mode** — while a zone's TV plays: that room's scale is forced to 1.0
-  (Apple TV remote gets a 1:1 mapping) and, if *TV solo* is enabled, zones in
-  *other* rooms are suppressed (no more kitchen music while fetching water).
+  (Apple TV remote gets a 1:1 mapping) and, per the *TV solo* mode, other
+  zones are suppressed: `same_room` silences zones in other rooms (no more
+  kitchen music while fetching water), `tv_zone` silences every zone except
+  the TV zone itself, `off` suppresses nothing.
 
 ### Zone lifecycle FSM
 
@@ -180,7 +183,7 @@ be absent; re-docking triggers repair too.
 | `number.<name>_master_volume` | Master volume 0–100 for dashboards/automations (Hue Tap Dial repoints here). |
 | `switch.<name>_enabled` | Kill switch — instant rollback to old automations during migration. |
 | `switch.<name>_mute` | Global mute (dial button binding). |
-| `switch.<name>_tv_solo` | Runtime toggle for TV-solo behavior. |
+| `select.<name>_tv_solo` | TV-solo mode: off / same room / TV zone only. |
 | `switch.<name>_keep_grouped` | Runtime toggle for group repair. |
 | `binary_sensor.<name>_zone_<zone>` | Zone audible? Attributes: FSM state, target volume, room scale. Replaces the `*_audio_zone` template helpers. |
 | `sensor.<name>_state` | Diagnostics: engine state snapshot, last event, effect counts. |
