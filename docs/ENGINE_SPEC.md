@@ -15,8 +15,11 @@ conflict, this spec wins.
 - **desired(speaker)** —
   - `None` (do not touch) if speaker is STANDALONE or engine disabled;
   - `0.0` if its zone is not audible;
-  - else `min(speaker_target(master, trim, room_scale), duck_cap)` where
-    `duck_cap` = lowest `duck_volume` among active duck inputs, or ∞ if none.
+  - else `min(speaker_target(master, trim, room_scale), duck_cap, night_cap)`
+    where `duck_cap` = lowest `duck_volume` among active duck inputs (∞ if
+    none) and `night_cap` = `night_volume_cap` while `night_mode` is on
+    (∞ otherwise). This is the single point where both caps apply — fades,
+    zone activations, rebalances, group joins and startup all go through it.
 - **reconcile(fade_context)** — for every speaker whose `desired ≠ commanded`
   (per `volumes_equal`), emit `RampVolume(speaker, desired, duration)` and set
   `commanded = desired`. The duration comes from the *cause*:
@@ -27,6 +30,7 @@ conflict, this spec wins.
   | zone fade-out (RELEASING/ACTIVE→IDLE) | `fade_out` / `rebalance_fade` for others |
   | master change | `master_fade` (all) |
   | duck engage / release | duck input's `engage_fade` / `release_fade` |
+  | night mode engage / release | `rebalance_fade` |
   | external-volume sync | `0` for the reporting speaker (it is already there), `rebalance_fade` for others |
   | TV mode / tv-solo-mode change | `rebalance_fade` |
   | enable / startup convergence | `rebalance_fade` |
@@ -75,12 +79,20 @@ Reconciliation is *the* only way volumes are changed. Every event handler is
 2.3 STANDALONE speakers are invisible to: master fan-out, reverse sync, duck
     caps, mute fan-out, group repair expectations, and room-scale counting.
 
-## 3. Master volume
+## 3. Master volume & night mode
 
 3.1 `SetMaster(v)`: clamp to [0,1], store, reconcile with `master_fade`.
     While muted: store only — reconcile happens on unmute.
 
 3.2 Master changes (forward or reverse) do not touch `last_transition`.
+
+3.3 `SetNightMode(active)`: store `night_mode` (published state, seeded from
+    the snapshot per 9.1). If it changed: stamp the mode-change timestamp
+    (rule 4.1) and reconcile with `rebalance_fade` — engaging caps every
+    audible speaker at `night_volume_cap` (section 0), disengaging restores
+    the exact pre-night targets. `master` itself is never modified by night
+    mode. While disabled: store only (8.1); the 8.2 enable reconcile applies
+    the cap.
 
 ## 4. External volume reports (reverse sync)
 
@@ -88,8 +100,9 @@ Reconciliation is *the* only way volumes are changed. Every event handler is
     Then *consider* sync; the report is **discarded** (state updated, no
     sync) if any of: engine disabled; speaker STANDALONE (its volume is its
     own business); zone not audible; global mute on; any duck input active;
-    `now - max(any zone's last_transition, duck/tv-mode change) <
-    transition_suppression`; or `v ≤ 0.01` (hard-zero guard).
+    night mode on (capped volumes imply nothing about the master — but see
+    rule 4.5); `now - max(any zone's last_transition, duck/tv/night-mode
+    change) < transition_suppression`; or `v ≤ 0.01` (hard-zero guard).
 
 4.2 Accepted reports debounce, they do not apply immediately: store
     `pending_external = v`, `StartTimer(external_debounce(speaker),
@@ -105,6 +118,16 @@ Reconciliation is *the* only way volumes are changed. Every event handler is
 4.4 Any reconciliation that writes to a speaker clears its
     `pending_external` and cancels its debounce timer (our write supersedes
     the stale external report).
+
+4.5 Night pull-back: while night mode is on, a report with
+    `v > night_volume_cap` from a non-STANDALONE speaker of an audible zone
+    is not debounced (4.1 already bars it from sync). Instead the engine
+    adopts it as the speaker's commanded volume and reconciles
+    (`rebalance_fade`), ramping the reporting speaker back down to its
+    desired volume (at most the cap). `master` is never touched. The
+    adapter's echo ledger swallows the corrective ramp's own state reports,
+    so the correction cannot re-trigger itself. Reports at or below the cap
+    follow 4.1 unchanged (discarded while night mode is on).
 
 ## 5. Mute
 
@@ -226,3 +249,6 @@ Reconciliation is *the* only way volumes are changed. Every event handler is
 - R10 TV starts (tv_solo_mode SAME_ROOM) → kitchen suppressed; walking into
   the kitchen while the TV plays keeps the kitchen silent; TV stops →
   kitchen fades in (it is occupied).
+- R11 Night mode on → knob turned above the cap → exactly one corrective
+  ramp back to the cap (no debounce timer), master untouched; a repeat
+  report of the cap value itself is discarded — no ping-pong.

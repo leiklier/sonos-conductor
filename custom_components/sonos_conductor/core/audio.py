@@ -1,9 +1,9 @@
-"""Master volume, mute, reverse sync, ducking, and trims (spec rules 3-5, 10.1).
+"""Master volume, night mode, mute, reverse sync, ducking, trims (rules 3-5, 10.1).
 
 Everything that turns user or external audio input into state: the master
-setter (rule 3), external volume reports and their debounced reverse sync
-(rule 4), global mute and its fan-out (rule 5), duck inputs, and runtime
-trim adjustment (rule 10.1).
+setter and night-mode ceiling (rule 3), external volume reports and their
+debounced reverse sync (rule 4), global mute and its fan-out (rule 5), duck
+inputs, and runtime trim adjustment (rule 10.1).
 """
 
 from __future__ import annotations
@@ -17,9 +17,10 @@ from .events import (
     ExternalVolume,
     SetMaster,
     SetMute,
+    SetNightMode,
     SetTrim,
 )
-from .volume_math import clamp, implied_master
+from .volume_math import clamp, implied_master, volumes_equal
 
 if TYPE_CHECKING:
     from .engine import ConductorEngine
@@ -30,7 +31,7 @@ if TYPE_CHECKING:
 _HARD_ZERO = 0.01
 
 # ---------------------------------------------------------------------
-# Master / mute (rules 3, 5)
+# Master / night mode / mute (rules 3, 5)
 # ---------------------------------------------------------------------
 
 
@@ -39,6 +40,17 @@ def on_set_master(engine: ConductorEngine, event: SetMaster, plan: Plan) -> None
     if not engine.state.enabled or engine.state.muted:
         return  # store only; reconcile happens on unmute / enable
     reconcile.reconcile(engine, plan, engine.config.tunables.master_fade)
+
+
+def on_set_night_mode(engine: ConductorEngine, event: SetNightMode, now: float, plan: Plan) -> None:
+    changed = engine.state.night_mode != event.active
+    engine.state.night_mode = event.active  # 3.3 (state stays fresh while disabled, 8.1)
+    if not changed:
+        return
+    engine._mode_change_at = now  # counts as a mode change (rule 4.1)
+    if not engine.state.enabled:
+        return  # 8.2's enable reconcile applies the cap later
+    reconcile.reconcile(engine, plan, engine.config.tunables.rebalance_fade)  # 3.3
 
 
 def on_set_mute(engine: ConductorEngine, event: SetMute, plan: Plan) -> None:
@@ -86,6 +98,8 @@ def on_external_volume(
     if speaker_state is None:  # 10.4
         return
     speaker_state.volume = event.volume  # 4.1: always update
+    if _night_pull_back(engine, event.speaker_id, event.volume, plan):
+        return  # 4.5: handled by ramping the reporter back under the cap
     if not sync_allowed(engine, event.speaker_id, event.volume, now):
         return  # report discarded
     speaker_state.pending_external = event.volume  # 4.2: debounce
@@ -95,11 +109,38 @@ def on_external_volume(
     )
 
 
+def _night_pull_back(engine: ConductorEngine, speaker_id: str, volume: float, plan: Plan) -> bool:
+    """Rule 4.5: while night mode is on, a report above the cap is never
+    synced — the reporting speaker is pulled back down instead.
+
+    Adopting the report as the commanded value makes the ordinary
+    reconciliation emit the corrective ramp (desired is at most the cap).
+    The adapter's echo ledger swallows that ramp's own state reports, so
+    the correction cannot re-trigger itself — no ping-pong.
+    """
+    state = engine.state
+    if not state.night_mode or not state.enabled:
+        return False
+    cap = engine.config.tunables.night_volume_cap
+    if volume <= cap or volumes_equal(volume, cap):
+        return False  # at/below the ceiling: normal 4.1 handling
+    if engine._is_standalone_speaker(speaker_id):
+        return False  # 2.3: the user owns it
+    zone = engine.config.zone_for_speaker(speaker_id)
+    if zone is None or not reconcile.is_audible(engine, zone.zone_id):
+        return False  # engine wants it silent anyway; state update suffices
+    state.speakers[speaker_id].commanded = volume  # adopt reality, then converge
+    reconcile.reconcile(engine, plan, engine.config.tunables.rebalance_fade)
+    return True
+
+
 def sync_allowed(engine: ConductorEngine, speaker_id: str, volume: float, now: float) -> bool:
     """Rule 4.1 acceptance conditions (also re-checked at fire time)."""
     state = engine.state
     if not state.enabled or state.muted:
         return False
+    if state.night_mode:
+        return False  # 4.1: capped volumes imply nothing about the master
     if volume <= _HARD_ZERO:
         return False
     if engine._is_standalone_speaker(speaker_id):
