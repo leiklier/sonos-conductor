@@ -20,7 +20,7 @@ from custom_components.sonos_conductor.core.events import (
     SetMaster,
     SetMute,
     SetTrim,
-    SetTvSolo,
+    SetTvSoloMode,
     TimerFired,
     TvPlayingChanged,
 )
@@ -29,6 +29,7 @@ from custom_components.sonos_conductor.core.model import (
     InitialSnapshot,
     SpeakerConfig,
     Tunables,
+    TvSoloMode,
     ZoneConfig,
     ZonePhase,
 )
@@ -124,7 +125,7 @@ class TestRule105Ordering:
     def test_rule_10_5_ramps_before_start_timers(self) -> None:
         h = Harness()
         h.occupy("kjokken", at=0.0)
-        h.fire(SetTvSolo(True), at=0.5)
+        h.fire(SetTvSoloMode(TvSoloMode.SAME_ROOM), at=0.5)
         h.fire(TvPlayingChanged("sofakrok", True), at=1.0)  # kjokken suppressed
         # TV stops: kjokken restore ramp + sofakrok hold timer, in that order.
         effects = h.fire(TvPlayingChanged("sofakrok", False), at=2.0)

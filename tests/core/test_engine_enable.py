@@ -15,11 +15,11 @@ from custom_components.sonos_conductor.core.events import (
     SetMaster,
     SetMute,
     SetTrim,
-    SetTvSolo,
+    SetTvSoloMode,
     TimerFired,
     TvPlayingChanged,
 )
-from custom_components.sonos_conductor.core.model import ZonePhase
+from custom_components.sonos_conductor.core.model import TvSoloMode, ZonePhase
 
 from .harness import (
     DOOR,
@@ -76,8 +76,8 @@ class TestRule81Disable:
         assert h.state.zones["kjokken"].phase is ZonePhase.STANDALONE
         assert h.fire(GroupMembersReported(SOFAKROK, (SOFAKROK,)), at=6.0) == []
         assert h.fire(DuckChanged(DOOR, True), at=7.0) == []
-        assert h.fire(SetTvSolo(True), at=8.0) == []
-        assert h.state.tv_solo is True
+        assert h.fire(SetTvSoloMode(TvSoloMode.SAME_ROOM), at=8.0) == []
+        assert h.state.tv_solo_mode is TvSoloMode.SAME_ROOM
         assert h.fire(SetKeepGrouped(False), at=9.0) == []
         assert h.state.keep_grouped is False
         assert h.fire(SetTrim(KJOKKEN, 1.0), at=10.0) == []

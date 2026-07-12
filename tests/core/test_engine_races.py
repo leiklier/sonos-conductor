@@ -13,10 +13,10 @@ from custom_components.sonos_conductor.core.events import (
     GroupMembersReported,
     SetMaster,
     SetMute,
-    SetTvSolo,
+    SetTvSoloMode,
     TvPlayingChanged,
 )
-from custom_components.sonos_conductor.core.model import ZonePhase
+from custom_components.sonos_conductor.core.model import TvSoloMode, ZonePhase
 from custom_components.sonos_conductor.core.volume_math import implied_master
 
 from .harness import (
@@ -145,7 +145,7 @@ def test_race_r9_master_moved_while_muted() -> None:
 
 def test_race_r10_tv_solo_full_script() -> None:
     h = Harness()
-    h.fire(SetTvSolo(True), at=0.0)
+    h.fire(SetTvSoloMode(TvSoloMode.SAME_ROOM), at=0.0)
     # TV starts: sofakrok (fallback, already audible) keeps its volume;
     # the kitchen room is now suppressed.
     assert h.fire(TvPlayingChanged("sofakrok", True), at=1.0) == []

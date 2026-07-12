@@ -16,6 +16,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from .model import TvSoloMode
+
 
 @dataclass(frozen=True, slots=True)
 class Event:
@@ -100,8 +102,8 @@ class SetEnabled(Event):
 
 
 @dataclass(frozen=True, slots=True)
-class SetTvSolo(Event):
-    enabled: bool
+class SetTvSoloMode(Event):
+    mode: TvSoloMode
 
 
 @dataclass(frozen=True, slots=True)

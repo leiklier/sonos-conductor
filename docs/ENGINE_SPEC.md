@@ -28,7 +28,7 @@ conflict, this spec wins.
   | master change | `master_fade` (all) |
   | duck engage / release | duck input's `engage_fade` / `release_fade` |
   | external-volume sync | `0` for the reporting speaker (it is already there), `rebalance_fade` for others |
-  | TV mode / tv_solo change | `rebalance_fade` |
+  | TV mode / tv-solo-mode change | `rebalance_fade` |
   | enable / startup convergence | `rebalance_fade` |
 
 Reconciliation is *the* only way volumes are changed. Every event handler is
@@ -126,14 +126,24 @@ Reconciliation is *the* only way volumes are changed. Every event handler is
 6.1 `TvPlayingChanged` updates the zone; TV playing forces that room's scale
     to 1.0 (via room_scale) and counts as occupancy (rule 1.4).
 
-6.2 While `tv_solo` is enabled AND any zone has `tv_playing`: zones in
-    *other rooms* are **solo-suppressed**: not audible (desired = 0)
-    regardless of phase. Their FSMs keep running normally so that when the
-    TV stops (or tv_solo is switched off) a single reconcile restores them.
-    Suppression counts as a transition for rule 4.1 (set a mode-change
-    timestamp when the suppression set changes).
+6.2 `tv_solo_mode ∈ {OFF, SAME_ROOM, TV_ZONE}` selects the set of
+    **solo-suppressed** zones. A solo-suppressed zone is not audible
+    (desired = 0) regardless of phase. While no zone has `tv_playing`, the
+    set is empty in every mode. While at least one zone has `tv_playing`:
 
-6.3 `SetTvSolo(x)`: store + reconcile (`rebalance_fade`).
+    | mode | solo-suppressed zones |
+    |---|---|
+    | OFF | none |
+    | SAME_ROOM | every zone whose room contains no zone with `tv_playing` |
+    | TV_ZONE | every zone that does not itself have `tv_playing` |
+
+    Suppressed zones' FSMs keep running normally so that when the TV stops
+    (or the mode changes) a single reconcile restores them. Suppression
+    counts as a transition for rule 4.1 (set a mode-change timestamp when
+    the suppression set changes — including changes caused by switching
+    between modes while a TV plays).
+
+6.3 `SetTvSoloMode(m)`: store + reconcile (`rebalance_fade`).
 
 ## 7. Group repair
 
@@ -213,6 +223,6 @@ Reconciliation is *the* only way volumes are changed. Every event handler is
 - R8 Group dissolves spontaneously → exactly one `JoinGroup` after the
   repair delay; dissolve caused by our own `JoinGroup` echo does not loop.
 - R9 Mute on → master slider moved → unmute → volumes match the new master.
-- R10 TV starts (tv_solo on) → kitchen suppressed; walking into the kitchen
-  while the TV plays keeps the kitchen silent; TV stops → kitchen fades in
-  (it is occupied).
+- R10 TV starts (tv_solo_mode SAME_ROOM) → kitchen suppressed; walking into
+  the kitchen while the TV plays keeps the kitchen silent; TV stops →
+  kitchen fades in (it is occupied).

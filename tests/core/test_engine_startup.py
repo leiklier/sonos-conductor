@@ -6,7 +6,7 @@ import pytest
 
 from custom_components.sonos_conductor.core import timers
 from custom_components.sonos_conductor.core.effects import StartTimer
-from custom_components.sonos_conductor.core.model import ZonePhase
+from custom_components.sonos_conductor.core.model import TvSoloMode, ZonePhase
 
 from .harness import (
     ALL_SPEAKERS,
@@ -55,13 +55,13 @@ class TestSeeding:
             snapshot=make_snapshot(
                 muted={SOFAKROK: True},
                 playing={SOFAKROK: True},
-                tv_solo=True,
+                tv_solo_mode=TvSoloMode.SAME_ROOM,
                 keep_grouped=False,
                 mute=True,
             ),
             auto_start=False,
         )
-        assert h.state.tv_solo is True
+        assert h.state.tv_solo_mode is TvSoloMode.SAME_ROOM
         assert h.state.keep_grouped is False
         assert h.state.muted is True
         assert h.state.speakers[SOFAKROK].muted is True
@@ -181,7 +181,7 @@ class TestAdoption:
     def test_startup_tv_solo_suppresses_at_seed(self) -> None:
         h = Harness(
             snapshot=make_snapshot(
-                tv_solo=True,
+                tv_solo_mode=TvSoloMode.SAME_ROOM,
                 tv_playing={"sofakrok": True},
                 occupancy={"kjokken": True},
                 volumes={KJOKKEN: 0.36, SPISEBORD: 0.0, SOFAKROK: 0.3},

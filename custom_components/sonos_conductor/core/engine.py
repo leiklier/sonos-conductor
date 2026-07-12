@@ -44,7 +44,7 @@ from .events import (
     SetMaster,
     SetMute,
     SetTrim,
-    SetTvSolo,
+    SetTvSoloMode,
     TimerFired,
     TvPlayingChanged,
 )
@@ -92,7 +92,7 @@ class ConductorEngine:
         state = self.state
         state.muted = snapshot.mute
         state.enabled = snapshot.enabled
-        state.tv_solo = snapshot.tv_solo
+        state.tv_solo_mode = snapshot.tv_solo_mode
         state.keep_grouped = snapshot.keep_grouped
         for speaker in self.config.speakers:
             sid = speaker.speaker_id
@@ -196,8 +196,8 @@ class ConductorEngine:
                 audio.on_set_mute(self, event, plan)
             case SetEnabled():
                 self._on_set_enabled(event, now, plan)
-            case SetTvSolo():
-                zones.on_set_tv_solo(self, event, now, plan)
+            case SetTvSoloMode():
+                zones.on_set_tv_solo_mode(self, event, now, plan)
             case SetKeepGrouped():
                 grouping.on_set_keep_grouped(self, event, plan)
             case SetTrim():
