@@ -21,6 +21,7 @@ from custom_components.sonos_conductor.core.events import (
     SetKeepGrouped,
     SetMaster,
     SetMute,
+    SetNightMode,
     SetTrim,
     SetTvSoloMode,
 )
@@ -193,6 +194,71 @@ async def test_switches_mirror_state_and_submit_events(hass: HomeAssistant, monk
     assert hass.states.get(mute).state == "on"
 
 
+async def test_night_mode_switch_mirrors_state_and_submits(
+    hass: HomeAssistant, monkeypatch
+) -> None:
+    entry, controller, fake = await setup_conductor(hass, monkeypatch)
+    night = entity_id_for(hass, "switch", f"{entry.entry_id}_night_mode")
+    assert night == "switch.sonos_conductor_night_mode"
+
+    assert hass.states.get(night).state == "off"  # engine default
+
+    await hass.services.async_call("switch", "turn_on", {"entity_id": night}, blocking=True)
+    await hass.async_block_till_done()
+    assert fake.events_of(SetNightMode) == [SetNightMode(True)]
+
+    # Engine state drives is_on via the dispatcher signal.
+    fake.state.night_mode = True
+    async_dispatcher_send(hass, controller.signal)
+    await hass.async_block_till_done()
+    assert hass.states.get(night).state == "on"
+
+    await hass.services.async_call("switch", "turn_off", {"entity_id": night}, blocking=True)
+    await hass.async_block_till_done()
+    assert fake.events_of(SetNightMode)[-1] == SetNightMode(False)
+
+
+async def test_night_mode_switch_restores_state(hass: HomeAssistant, monkeypatch) -> None:
+    """A restored 'on' is pushed back into the engine as SetNightMode."""
+    mock_restore_cache(hass, (State("switch.sonos_conductor_night_mode", "on"),))
+    _entry, _controller, fake = await setup_conductor(hass, monkeypatch)
+    assert fake.events_of(SetNightMode) == [SetNightMode(True)]
+
+
+async def test_night_mode_switch_ignores_invalid_restore(hass: HomeAssistant, monkeypatch) -> None:
+    """Unknown/invalid restored values leave the engine default (off)."""
+    mock_restore_cache(hass, (State("switch.sonos_conductor_night_mode", "unavailable"),))
+    entry, _controller, fake = await setup_conductor(hass, monkeypatch)
+    assert fake.events_of(SetNightMode) == []
+    night = entity_id_for(hass, "switch", f"{entry.entry_id}_night_mode")
+    assert hass.states.get(night).state == "off"
+
+
+async def test_night_mode_switch_restore_matching_state_is_silent(
+    hass: HomeAssistant, monkeypatch
+) -> None:
+    """Restoring the engine's current value submits nothing."""
+    mock_restore_cache(hass, (State("switch.sonos_conductor_night_mode", "off"),))
+    _entry, _controller, fake = await setup_conductor(hass, monkeypatch)
+    assert fake.events_of(SetNightMode) == []
+
+
+async def test_other_switches_do_not_restore(hass: HomeAssistant, monkeypatch) -> None:
+    """Only night_mode restores; enabled/mute/keep_grouped keep engine defaults."""
+    mock_restore_cache(
+        hass,
+        (
+            State("switch.sonos_conductor_enabled", "off"),
+            State("switch.sonos_conductor_mute", "on"),
+            State("switch.sonos_conductor_keep_grouped", "off"),
+        ),
+    )
+    _entry, _controller, fake = await setup_conductor(hass, monkeypatch)
+    assert fake.events_of(SetEnabled) == []
+    assert fake.events_of(SetMute) == []
+    assert fake.events_of(SetKeepGrouped) == []
+
+
 async def test_tv_solo_switch_is_gone(hass: HomeAssistant, monkeypatch) -> None:
     """The tv_solo boolean switch was replaced by the mode select."""
     entry, _controller, _fake = await setup_conductor(hass, monkeypatch)
@@ -337,6 +403,7 @@ async def test_diagnostics_sensor(hass: HomeAssistant, monkeypatch) -> None:
     assert state.attributes["muted"] is False
     assert state.attributes["tv_solo_mode"] == "off"
     assert state.attributes["keep_grouped"] is True
+    assert state.attributes["night_mode"] is False
     assert state.attributes["speakers"][SOFA] == {
         "commanded": None,
         "volume": 0.2,

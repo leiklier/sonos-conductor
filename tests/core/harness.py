@@ -110,6 +110,7 @@ def make_snapshot(
     enabled: bool = True,
     tv_solo_mode: TvSoloMode = TvSoloMode.OFF,
     keep_grouped: bool = True,
+    night_mode: bool = False,
 ) -> InitialSnapshot:
     """A quiet house: nobody home, everything docked, grouped, converged.
 
@@ -140,6 +141,7 @@ def make_snapshot(
         enabled=enabled,
         tv_solo_mode=tv_solo_mode,
         keep_grouped=keep_grouped,
+        night_mode=night_mode,
     )
 
 

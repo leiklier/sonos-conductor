@@ -43,6 +43,7 @@ from .events import (
     SetKeepGrouped,
     SetMaster,
     SetMute,
+    SetNightMode,
     SetTrim,
     SetTvSoloMode,
     TimerFired,
@@ -92,6 +93,7 @@ class ConductorEngine:
         state.enabled = snapshot.enabled
         state.tv_solo_mode = snapshot.tv_solo_mode
         state.keep_grouped = snapshot.keep_grouped
+        state.night_mode = snapshot.night_mode  # 3.3 seeds like any flag (9.1)
         for speaker in self.config.speakers:
             sid = speaker.speaker_id
             state.speakers[sid] = SpeakerState(
@@ -192,6 +194,8 @@ class ConductorEngine:
                 audio.on_set_master(self, event, plan)
             case SetMute():
                 audio.on_set_mute(self, event, plan)
+            case SetNightMode():
+                audio.on_set_night_mode(self, event, now, plan)
             case SetEnabled():
                 self._on_set_enabled(event, now, plan)
             case SetTvSoloMode():

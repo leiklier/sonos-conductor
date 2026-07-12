@@ -47,6 +47,7 @@ class SonosConductorStateSensor(ConductorEntity, SensorEntity):
             "muted": state.muted,
             "tv_solo_mode": state.tv_solo_mode.value,
             "keep_grouped": state.keep_grouped,
+            "night_mode": state.night_mode,
             "speakers": {
                 speaker_id: {
                     "commanded": speaker.commanded,

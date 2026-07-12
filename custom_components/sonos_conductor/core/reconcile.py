@@ -62,7 +62,11 @@ def desired(engine: ConductorEngine, speaker_id: str) -> float | None:
         engine.state.master, engine._trims[speaker_id], room_scale(engine, zone.room_id)
     )
     cap = duck_cap(engine)
-    return target if cap is None else min(target, cap)
+    if cap is not None:
+        target = min(target, cap)
+    if engine.state.night_mode:  # night ceiling (rule 3.3); duck below it wins
+        target = min(target, engine.config.tunables.night_volume_cap)
+    return target
 
 
 def is_audible(engine: ConductorEngine, zone_id: str) -> bool:

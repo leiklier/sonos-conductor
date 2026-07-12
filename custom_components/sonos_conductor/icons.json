@@ -35,6 +35,9 @@
         "state": {
           "off": "mdi:link-variant-off"
         }
+      },
+      "night_mode": {
+        "default": "mdi:weather-night"
       }
     },
     "select": {

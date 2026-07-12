@@ -21,7 +21,7 @@ custom_components/sonos_conductor/
 │   ├── volume_math.py    Pure functions: ratios, room scaling, master mapping
 │   ├── plan.py           Plan: effect accumulation in spec 10.5 order
 │   ├── zones.py          Zone FSM: lifecycle, docking, fallback (rules 1, 2)
-│   ├── audio.py          Master, mute, reverse sync, ducking, trims (rules 3-5)
+│   ├── audio.py          Master, night mode, mute, reverse sync, ducking, trims (rules 3-5)
 │   ├── grouping.py       Group repair (rule 7)
 │   ├── reconcile.py      Reconciliation + derived state (section 0, 6.2)
 │   └── engine.py         ConductorEngine: state, dispatch, handle(event) -> list[Effect]
@@ -31,7 +31,7 @@ custom_components/sonos_conductor/
 ├── config_flow.py        Config + options flow built on discovery suggestions
 ├── media_player.py       Master media player (HomeKit-friendly proxy)
 ├── number.py             Master volume + per-speaker trim
-├── switch.py             enabled / mute / keep_grouped
+├── switch.py             enabled / mute / keep_grouped / night_mode
 ├── select.py             tv_solo mode (off / same_room / tv_zone)
 ├── binary_sensor.py      Per-zone activity (replaces template helpers)
 └── sensor.py             Engine diagnostics
@@ -65,6 +65,11 @@ effects. A CI check (`tests/test_purity.py`) imports every `core` module with
   zones are suppressed: `same_room` silences zones in other rooms (no more
   kitchen music while fetching water), `tv_zone` silences every zone except
   the TV zone itself, `off` suppresses nothing.
+- **Night mode** — a global volume ceiling: while the `night_mode` switch is
+  on, no speaker plays above `night_volume_cap` (tunable, default 0.15).
+  The master volume is untouched, so switching night mode off restores the
+  exact previous targets. Scheduling is deliberately external (an HA
+  automation flips the switch); the engine only sees `SetNightMode`.
 
 ### Zone lifecycle FSM
 
@@ -103,6 +108,7 @@ speaker from scratch:
 desired(speaker) = 0                                    if zone not audible
                  = master × trim × room_scale(room)     otherwise
 capped by duck:  min(desired, duck_volume)              while any duck active
+capped by night: min(desired, night_volume_cap)         while night mode on
 muted:           mute flag handled via SetMute effects, volume preserved
 ```
 
@@ -183,6 +189,7 @@ be absent; re-docking triggers repair too.
 | `number.<name>_master_volume` | Master volume 0–100 for dashboards/automations (Hue Tap Dial repoints here). |
 | `switch.<name>_enabled` | Kill switch — instant rollback to old automations during migration. |
 | `switch.<name>_mute` | Global mute (dial button binding). |
+| `switch.<name>_night_mode` | Global volume ceiling (`night_volume_cap`): no speaker plays above the cap while on. Restored across restarts; flip it from an HA automation for scheduling. |
 | `select.<name>_tv_solo` | TV-solo mode: off / same room / TV zone only. |
 | `switch.<name>_keep_grouped` | Runtime toggle for group repair. |
 | `binary_sensor.<name>_zone_<zone>` | Zone audible? Attributes: FSM state, target volume, room scale. Replaces the `*_audio_zone` template helpers. |
@@ -206,7 +213,7 @@ be absent; re-docking triggers repair too.
    restore fade (default 2 s).
 6. **Tunables** (options flow, sane defaults): fade durations (in 3 s /
    out 5 s / rebalance 2 s), `sync_threshold`, `external_debounce`,
-   `transition_suppression`, group-repair delay.
+   `transition_suppression`, group-repair delay, `night_volume_cap`.
 
 All of this lives in the config entry's `options` so it is editable without
 re-adding the integration.

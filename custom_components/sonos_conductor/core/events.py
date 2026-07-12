@@ -112,6 +112,13 @@ class SetKeepGrouped(Event):
 
 
 @dataclass(frozen=True, slots=True)
+class SetNightMode(Event):
+    """Engage or release the global night-mode volume ceiling (rule 3.3)."""
+
+    active: bool
+
+
+@dataclass(frozen=True, slots=True)
 class SetTrim(Event):
     """Runtime adjustment of a speaker's loudness trim."""
 

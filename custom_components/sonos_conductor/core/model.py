@@ -95,6 +95,9 @@ class Tunables:
     group_repair_delay: float = 15.0
     #: Volume divergence below which startup adopts current volumes as-is.
     startup_tolerance: float = 0.03
+    #: Absolute volume ceiling for every speaker while night mode is active.
+    #: Duck inputs with a lower cap still win (the lowest cap applies).
+    night_volume_cap: float = 0.15
 
 
 @dataclass(frozen=True, slots=True)
@@ -167,6 +170,9 @@ class EngineState:
     enabled: bool = True
     tv_solo_mode: TvSoloMode = TvSoloMode.OFF
     keep_grouped: bool = True
+    #: Global night-mode volume ceiling engaged (rule 3.3). Published state:
+    #: adapters read it, never derive it.
+    night_mode: bool = False
     #: Zone ids currently solo-suppressed (rule 6.2). Engine-maintained,
     #: published so the adapter never re-derives suppression itself.
     suppressed: frozenset[str] = frozenset()
@@ -198,3 +204,4 @@ class InitialSnapshot:
     enabled: bool = True
     tv_solo_mode: TvSoloMode = TvSoloMode.OFF
     keep_grouped: bool = True
+    night_mode: bool = False

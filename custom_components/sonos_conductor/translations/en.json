@@ -61,7 +61,8 @@
           "external_debounce": "External debounce",
           "transition_suppression": "Transition suppression",
           "group_repair_delay": "Group repair delay",
-          "startup_tolerance": "Startup tolerance"
+          "startup_tolerance": "Startup tolerance",
+          "night_volume_cap": "Night volume cap"
         },
         "data_description": {
           "fade_in": "Seconds to fade a zone in when it becomes active.",
@@ -72,7 +73,8 @@
           "external_debounce": "Seconds an external volume report must stay stable before it is trusted (absorbs slider drags in the Sonos app).",
           "transition_suppression": "Ignore external volume reports within this window after any zone, duck or TV transition — the fleet is in motion.",
           "group_repair_delay": "How long the speaker group topology may deviate before it is repaired.",
-          "startup_tolerance": "Volume divergence below which startup adopts the current volumes as-is instead of converging them."
+          "startup_tolerance": "Volume divergence below which startup adopts the current volumes as-is instead of converging them.",
+          "night_volume_cap": "Absolute volume ceiling for every speaker while night mode is active. Duck inputs with a lower cap still win."
         }
       }
     },
@@ -147,7 +149,8 @@
           "external_debounce": "External debounce",
           "transition_suppression": "Transition suppression",
           "group_repair_delay": "Group repair delay",
-          "startup_tolerance": "Startup tolerance"
+          "startup_tolerance": "Startup tolerance",
+          "night_volume_cap": "Night volume cap"
         },
         "data_description": {
           "fade_in": "Seconds to fade a zone in when it becomes active.",
@@ -158,7 +161,8 @@
           "external_debounce": "Seconds an external volume report must stay stable before it is trusted (absorbs slider drags in the Sonos app).",
           "transition_suppression": "Ignore external volume reports within this window after any zone, duck or TV transition — the fleet is in motion.",
           "group_repair_delay": "How long the speaker group topology may deviate before it is repaired.",
-          "startup_tolerance": "Volume divergence below which startup adopts the current volumes as-is instead of converging them."
+          "startup_tolerance": "Volume divergence below which startup adopts the current volumes as-is instead of converging them.",
+          "night_volume_cap": "Absolute volume ceiling for every speaker while night mode is active. Duck inputs with a lower cap still win."
         }
       },
       "media": {

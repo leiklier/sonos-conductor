@@ -72,6 +72,7 @@ _TUNABLE_UI: dict[str, tuple[float, float, float, str | None]] = {
     "transition_suppression": (0, 120, 0.5, "s"),
     "group_repair_delay": (0, 300, 1, "s"),
     "startup_tolerance": (0, 0.5, 0.01, None),
+    "night_volume_cap": (0.0, 1.0, 0.01, None),
 }
 _TUNABLE_FALLBACK_UI: tuple[float, float, float, str | None] = (0, 600, 0.01, None)
 
