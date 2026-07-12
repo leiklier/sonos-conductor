@@ -37,7 +37,6 @@ class SonosConductorTvSoloSelect(ConductorEntity, SelectEntity, RestoreEntity):
     """
 
     _attr_translation_key = "tv_solo"
-    _attr_icon = "mdi:television-speaker"
     _attr_entity_category = EntityCategory.CONFIG
     _attr_options: ClassVar[list[str]] = [mode.value for mode in TvSoloMode]
 
