@@ -5,11 +5,15 @@ from __future__ import annotations
 from math import sqrt
 
 import pytest
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, State
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.entity_component import DATA_INSTANCES
-from pytest_homeassistant_custom_component.common import MockConfigEntry, async_mock_service
+from pytest_homeassistant_custom_component.common import (
+    MockConfigEntry,
+    async_mock_service,
+    mock_restore_cache,
+)
 
 from custom_components.sonos_conductor.const import DOMAIN
 from custom_components.sonos_conductor.core.events import (
@@ -18,9 +22,9 @@ from custom_components.sonos_conductor.core.events import (
     SetMaster,
     SetMute,
     SetTrim,
-    SetTvSolo,
+    SetTvSoloMode,
 )
-from custom_components.sonos_conductor.core.model import ZonePhase
+from custom_components.sonos_conductor.core.model import TvSoloMode, ZonePhase
 from tests.test_controller import MOVE, OPTIONS, SOFA, set_speaker, setup_conductor
 
 
@@ -167,23 +171,19 @@ async def test_switches_mirror_state_and_submit_events(hass: HomeAssistant, monk
 
     enabled = entity_id_for(hass, "switch", f"{entry.entry_id}_enabled")
     mute = entity_id_for(hass, "switch", f"{entry.entry_id}_mute")
-    tv_solo = entity_id_for(hass, "switch", f"{entry.entry_id}_tv_solo")
     keep_grouped = entity_id_for(hass, "switch", f"{entry.entry_id}_keep_grouped")
 
     assert hass.states.get(enabled).state == "on"
     assert hass.states.get(mute).state == "off"
-    assert hass.states.get(tv_solo).state == "off"
     assert hass.states.get(keep_grouped).state == "on"
 
     await hass.services.async_call("switch", "turn_off", {"entity_id": enabled}, blocking=True)
     await hass.services.async_call("switch", "turn_on", {"entity_id": mute}, blocking=True)
-    await hass.services.async_call("switch", "turn_on", {"entity_id": tv_solo}, blocking=True)
     await hass.services.async_call("switch", "turn_off", {"entity_id": keep_grouped}, blocking=True)
     await hass.async_block_till_done()
 
     assert fake.events_of(SetEnabled) == [SetEnabled(False)]
     assert fake.events_of(SetMute) == [SetMute(True, source="switch")]
-    assert fake.events_of(SetTvSolo) == [SetTvSolo(True)]
     assert fake.events_of(SetKeepGrouped) == [SetKeepGrouped(False)]
 
     # Engine state drives is_on via the dispatcher signal.
@@ -191,6 +191,56 @@ async def test_switches_mirror_state_and_submit_events(hass: HomeAssistant, monk
     async_dispatcher_send(hass, controller.signal)
     await hass.async_block_till_done()
     assert hass.states.get(mute).state == "on"
+
+
+async def test_tv_solo_switch_is_gone(hass: HomeAssistant, monkeypatch) -> None:
+    """The tv_solo boolean switch was replaced by the mode select."""
+    entry, _controller, _fake = await setup_conductor(hass, monkeypatch)
+    registry = er.async_get(hass)
+    assert registry.async_get_entity_id("switch", DOMAIN, f"{entry.entry_id}_tv_solo") is None
+
+
+# ---------------------------------------------------------------------------
+# tv_solo select
+# ---------------------------------------------------------------------------
+
+
+async def test_tv_solo_select_options_state_and_dispatch(hass: HomeAssistant, monkeypatch) -> None:
+    entry, controller, fake = await setup_conductor(hass, monkeypatch)
+    select = entity_id_for(hass, "select", f"{entry.entry_id}_tv_solo")
+    assert select == "select.sonos_conductor_tv_solo"
+
+    state = hass.states.get(select)
+    assert state.state == "off"  # engine default
+    assert state.attributes["options"] == ["off", "same_room", "tv_zone"]
+
+    await hass.services.async_call(
+        "select", "select_option", {"entity_id": select, "option": "tv_zone"}, blocking=True
+    )
+    await hass.async_block_till_done()
+    assert fake.events_of(SetTvSoloMode) == [SetTvSoloMode(TvSoloMode.TV_ZONE)]
+
+    # Engine state drives the rendered option via the dispatcher signal.
+    fake.state.tv_solo_mode = TvSoloMode.SAME_ROOM
+    async_dispatcher_send(hass, controller.signal)
+    await hass.async_block_till_done()
+    assert hass.states.get(select).state == "same_room"
+
+
+async def test_tv_solo_select_restores_mode(hass: HomeAssistant, monkeypatch) -> None:
+    """A restored option is pushed back into the engine as SetTvSoloMode."""
+    mock_restore_cache(hass, (State("select.sonos_conductor_tv_solo", "tv_zone"),))
+    _entry, _controller, fake = await setup_conductor(hass, monkeypatch)
+    assert fake.events_of(SetTvSoloMode) == [SetTvSoloMode(TvSoloMode.TV_ZONE)]
+
+
+async def test_tv_solo_select_ignores_invalid_restore(hass: HomeAssistant, monkeypatch) -> None:
+    """Unknown/invalid restored values leave the engine at OFF."""
+    mock_restore_cache(hass, (State("select.sonos_conductor_tv_solo", "unavailable"),))
+    entry, _controller, fake = await setup_conductor(hass, monkeypatch)
+    assert fake.events_of(SetTvSoloMode) == []
+    select = entity_id_for(hass, "select", f"{entry.entry_id}_tv_solo")
+    assert hass.states.get(select).state == "off"
 
 
 # ---------------------------------------------------------------------------
@@ -240,19 +290,32 @@ async def test_zone_binary_sensor(hass: HomeAssistant, monkeypatch) -> None:
 async def test_zone_sensor_tv_solo_suppression(hass: HomeAssistant, monkeypatch) -> None:
     entry, controller, fake = await setup_conductor(hass, monkeypatch)
     kjokken = entity_id_for(hass, "binary_sensor", f"{entry.entry_id}_zone_kjokken")
+    spisebord = entity_id_for(hass, "binary_sensor", f"{entry.entry_id}_zone_spisebord")
 
-    # TV playing in stue with tv_solo: kjokken is suppressed -> target 0.
-    fake.state.tv_solo = True
+    # TV playing in stue with same_room: kjokken is suppressed -> target 0,
+    # but spisebord (same room as the TV) keeps a target.
+    fake.state.tv_solo_mode = TvSoloMode.SAME_ROOM
     fake.state.zones["sofakrok"].phase = ZonePhase.ACTIVE
     fake.state.zones["sofakrok"].tv_playing = True
     fake.state.zones["kjokken"].phase = ZonePhase.ACTIVE
     fake.state.zones["kjokken"].occupied = True
+    fake.state.zones["spisebord"].phase = ZonePhase.ACTIVE
+    fake.state.zones["spisebord"].occupied = True
     async_dispatcher_send(hass, controller.signal)
     await hass.async_block_till_done()
 
     state = hass.states.get(kjokken)
     assert state.state == "on"  # phase-mirroring: FSM says active
     assert state.attributes["target_volume"] == 0.0  # but solo-suppressed
+    assert hass.states.get(spisebord).attributes["target_volume"] > 0.0
+
+    # tv_zone suppresses the same-room zone too; only the TV zone plays.
+    fake.state.tv_solo_mode = TvSoloMode.TV_ZONE
+    async_dispatcher_send(hass, controller.signal)
+    await hass.async_block_till_done()
+
+    assert hass.states.get(spisebord).attributes["target_volume"] == 0.0
+    assert hass.states.get(kjokken).attributes["target_volume"] == 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -268,6 +331,7 @@ async def test_diagnostics_sensor(hass: HomeAssistant, monkeypatch) -> None:
     assert state.state == "enabled"
     assert state.attributes["master"] == 0.2
     assert state.attributes["muted"] is False
+    assert state.attributes["tv_solo_mode"] == "off"
     assert state.attributes["keep_grouped"] is True
     assert state.attributes["speakers"][SOFA] == {
         "commanded": None,

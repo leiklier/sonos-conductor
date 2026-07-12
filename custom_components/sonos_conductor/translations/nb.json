@@ -178,5 +178,17 @@
     "abort": {
       "no_zones_configured": "Det finnes ingen soner å redigere. Fjern integrasjonen og legg den til på nytt for å velge høyttalere."
     }
+  },
+  "entity": {
+    "select": {
+      "tv_solo": {
+        "name": "TV-solomodus",
+        "state": {
+          "off": "Av",
+          "same_room": "Samme rom",
+          "tv_zone": "Kun TV-sonen"
+        }
+      }
+    }
   }
 }

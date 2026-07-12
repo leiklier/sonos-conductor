@@ -340,15 +340,19 @@ async def test_mute_switch_fans_out(hass: HomeAssistant) -> None:
     assert player.attributes["is_volume_muted"] is True
 
 
-async def test_tv_solo_silences_other_room(hass: HomeAssistant) -> None:
-    _entry, calls, n = await _setup(hass, occupied=("kjokken",))
+async def _select_tv_solo(hass: HomeAssistant, option: str) -> None:
     await hass.services.async_call(
-        "switch",
-        "turn_on",
-        {"entity_id": "switch.sonos_conductor_tv_solo"},
+        "select",
+        "select_option",
+        {"entity_id": "select.sonos_conductor_tv_solo", "option": option},
         blocking=True,
     )
     await hass.async_block_till_done()
+
+
+async def test_tv_solo_same_room_silences_other_room(hass: HomeAssistant) -> None:
+    _entry, calls, n = await _setup(hass, occupied=("kjokken",))
+    await _select_tv_solo(hass, "same_room")
 
     hass.states.async_set(TV, "playing")  # movie night
     await hass.async_block_till_done()
@@ -362,6 +366,32 @@ async def test_tv_solo_silences_other_room(hass: HomeAssistant) -> None:
     await hass.async_block_till_done()
     writes_after = dict(_volume_writes(calls, n))
     assert writes_after[MOVE] == pytest.approx(0.24)  # kitchen comes back
+
+
+async def test_tv_zone_mode_silences_same_room_zone(hass: HomeAssistant) -> None:
+    """TV_ZONE silences the Era next to the TV; SAME_ROOM keeps it audible."""
+    _entry, calls, n = await _setup(hass, occupied=("spisebord",))
+    await _select_tv_solo(hass, "same_room")
+    assert hass.states.get("select.sonos_conductor_tv_solo").state == "same_room"
+
+    hass.states.async_set(TV, "playing")  # movie night on the Arc
+    await hass.async_block_till_done()
+    writes = dict(_volume_writes(calls, n))
+    assert writes[ARC] == pytest.approx(0.2)  # TV zone fades in
+    assert ERA not in writes  # same room: stays at 0.22 (TV-forced unity scale)
+    assert MOVE not in writes  # kitchen was silent already
+    _echo(hass, calls, n)
+    n = len(calls["volume"])
+
+    await _select_tv_solo(hass, "tv_zone")  # stricter: only the TV zone plays
+    writes = dict(_volume_writes(calls, n))
+    assert writes == {ERA: pytest.approx(0.0)}  # Era silenced despite sharing the room
+    _echo(hass, calls, n)
+    n = len(calls["volume"])
+
+    await _select_tv_solo(hass, "same_room")  # relax again: Era comes back
+    writes = dict(_volume_writes(calls, n))
+    assert writes == {ERA: pytest.approx(0.22)}  # 0.2 * 1.1, unity scale
 
 
 async def test_group_dissolve_repaired_once(hass: HomeAssistant) -> None:

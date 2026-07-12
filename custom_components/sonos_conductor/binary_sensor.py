@@ -16,32 +16,35 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .const import DOMAIN
 from .controller import ConductorEntity, SonosConductorController
-from .core.model import ConductorConfig, EngineState, ZoneConfig, ZonePhase
+from .core.model import ConductorConfig, EngineState, TvSoloMode, ZoneConfig, ZonePhase
 from .core.volume_math import room_scale, speaker_target
 
 AUDIBLE_PHASES = (ZonePhase.ACTIVE, ZonePhase.RELEASING)
 
 
-def _tv_rooms(config: ConductorConfig, state: EngineState) -> set[str]:
-    """Rooms with an audible-phase zone whose TV is playing."""
-    rooms: set[str] = set()
+def _tv_zones(config: ConductorConfig, state: EngineState) -> list[ZoneConfig]:
+    """Audible-phase zones whose TV is playing."""
+    zones: list[ZoneConfig] = []
     for zone in config.zones:
         zone_state = state.zones.get(zone.zone_id)
         if zone_state is not None and zone_state.phase in AUDIBLE_PHASES and zone_state.tv_playing:
-            rooms.add(zone.room_id)
-    return rooms
+            zones.append(zone)
+    return zones
 
 
 def _is_audible(config: ConductorConfig, state: EngineState, zone: ZoneConfig) -> bool:
-    """Mirror the engine's audibility rule (phase + tv_solo suppression)."""
+    """Mirror the engine's audibility rule (phase + tv-solo suppression)."""
     zone_state = state.zones.get(zone.zone_id)
     if zone_state is None or zone_state.phase not in AUDIBLE_PHASES:
         return False
-    if state.tv_solo:
-        tv_rooms = _tv_rooms(config, state)
-        if tv_rooms and zone.room_id not in tv_rooms:
-            return False
-    return True
+    if state.tv_solo_mode is TvSoloMode.OFF:
+        return True
+    tv_zones = _tv_zones(config, state)
+    if not tv_zones:
+        return True
+    if state.tv_solo_mode is TvSoloMode.TV_ZONE:
+        return zone.zone_id in {z.zone_id for z in tv_zones}
+    return zone.room_id in {z.room_id for z in tv_zones}  # SAME_ROOM
 
 
 def _room_scale_for(config: ConductorConfig, state: EngineState, room_id: str) -> float:
