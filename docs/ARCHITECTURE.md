@@ -19,7 +19,12 @@ custom_components/sonos_conductor/
 │   ├── events.py         Input events (frozen dataclasses, discriminated union)
 │   ├── effects.py        Output effects (frozen dataclasses, discriminated union)
 │   ├── volume_math.py    Pure functions: ratios, room scaling, master mapping
-│   └── engine.py         ConductorEngine: handle(event) -> list[Effect]
+│   ├── plan.py           Plan: effect accumulation in spec 10.5 order
+│   ├── zones.py          Zone FSM: lifecycle, docking, fallback (rules 1, 2)
+│   ├── audio.py          Master, mute, reverse sync, ducking, trims (rules 3-5)
+│   ├── grouping.py       Group repair (rule 7)
+│   ├── reconcile.py      Reconciliation + derived state (section 0, 6.2)
+│   └── engine.py         ConductorEngine: state, dispatch, handle(event) -> list[Effect]
 │
 ├── controller.py         The actor: HA events -> queue -> engine -> effect executor
 ├── discovery.py          Registry scanning (speakers, dock sensors, areas, TVs)
