@@ -69,6 +69,7 @@ class SonosConductorZoneSensor(ConductorEntity, BinarySensorEntity):
     """Is this zone audible?"""
 
     _attr_device_class = BinarySensorDeviceClass.SOUND
+    _attr_translation_key = "zone"
 
     def __init__(self, controller: SonosConductorController, zone: ZoneConfig) -> None:
         super().__init__(controller)

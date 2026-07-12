@@ -102,6 +102,7 @@ class SonosConductorMediaPlayer(ConductorEntity, MediaPlayerEntity):
 
     _attr_device_class = MediaPlayerDeviceClass.TV
     _attr_name = None  # take the device name ("Sonos Conductor")
+    _attr_translation_key = "master"
     _attr_supported_features = (
         MediaPlayerEntityFeature.VOLUME_SET
         | MediaPlayerEntityFeature.VOLUME_MUTE

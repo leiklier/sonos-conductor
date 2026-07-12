@@ -1,0 +1,64 @@
+{
+  "entity": {
+    "media_player": {
+      "master": {
+        "default": "mdi:speaker-multiple",
+        "state": {
+          "off": "mdi:speaker-off"
+        }
+      }
+    },
+    "number": {
+      "master_volume": {
+        "default": "mdi:volume-high"
+      },
+      "trim": {
+        "default": "mdi:tune-vertical"
+      }
+    },
+    "switch": {
+      "enabled": {
+        "default": "mdi:play-circle",
+        "state": {
+          "off": "mdi:pause-circle"
+        }
+      },
+      "mute": {
+        "default": "mdi:volume-high",
+        "state": {
+          "on": "mdi:volume-off",
+          "off": "mdi:volume-high"
+        }
+      },
+      "tv_solo": {
+        "default": "mdi:television-speaker",
+        "state": {
+          "off": "mdi:television-speaker-off"
+        }
+      },
+      "keep_grouped": {
+        "default": "mdi:link-variant",
+        "state": {
+          "off": "mdi:link-variant-off"
+        }
+      }
+    },
+    "binary_sensor": {
+      "zone": {
+        "default": "mdi:speaker-off",
+        "state": {
+          "on": "mdi:speaker"
+        }
+      }
+    },
+    "sensor": {
+      "state": {
+        "default": "mdi:tune",
+        "state": {
+          "enabled": "mdi:play-circle",
+          "disabled": "mdi:pause-circle-outline"
+        }
+      }
+    }
+  }
+}

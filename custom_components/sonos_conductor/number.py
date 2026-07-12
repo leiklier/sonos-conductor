@@ -37,7 +37,7 @@ class MasterVolumeNumber(ConductorEntity, NumberEntity):
     """The conductor's master volume (0..1)."""
 
     _attr_name = "Master volume"
-    _attr_icon = "mdi:volume-high"
+    _attr_translation_key = "master_volume"
     _attr_native_min_value = 0.0
     _attr_native_max_value = 1.0
     _attr_native_step = 0.01
@@ -63,7 +63,7 @@ class SpeakerTrimNumber(ConductorEntity, NumberEntity):
     the last value it submitted, seeded from the configured trim.
     """
 
-    _attr_icon = "mdi:tune-vertical"
+    _attr_translation_key = "trim"
     _attr_entity_category = EntityCategory.CONFIG
     _attr_native_min_value = 0.5
     _attr_native_max_value = 2.0
