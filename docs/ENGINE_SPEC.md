@@ -109,7 +109,9 @@ Reconciliation is *the* only way volumes are changed. Every event handler is
 
 2.2 `DockChanged(docked=True)` → leave STANDALONE; recompute phase from
     current `occupied/tv_playing` as if the inputs just changed (fade-in when
-    it lands ACTIVE). If `keep_grouped`, schedule group repair (rule 7).
+    it lands ACTIVE; landing ACTIVE starts a new activity episode per rule
+    1.7 — peak := current activity, never a stale pre-undock peak). If
+    `keep_grouped`, schedule group repair (rule 7).
 
 2.3 STANDALONE speakers are invisible to: master fan-out, reverse sync, duck
     caps, mute fan-out, group repair expectations, and room-scale counting.

@@ -20,6 +20,11 @@ Unavailability policy:
 - Binary inputs (occupancy, duck) that are unavailable/unknown count as
   ``False``; dock sensors count as ``docked=True`` (they are battery-charging
   sensors — losing the sensor must not eject the speaker from the conductor).
+- Presence Conductor room sensors are the exception: they report unavailable
+  when the estimator is *blind*, which must not read as "the room emptied".
+  Their occupancy contribution holds its last definitive value until the
+  sensor reports on/off again (activity and home presence map blind to
+  ``None`` the same way).
 - Speaker state events while unavailable are ignored. On the
   unavailable → available transition the echo ledger is stale, so it is
   bypassed: the controller emits ``ExternalVolume`` / ``ExternalMute`` /
@@ -371,17 +376,25 @@ class SonosConductorController:
         self._zones_by_tv: dict[str, list[str]] = {}
         self._activity_by_zone: dict[str, str] = {}
         self._zones_by_activity: dict[str, list[str]] = {}
+        self._presence_by_zone: dict[str, str] = {}
+        #: Last definitive on/off per presence entity. Presence Conductor
+        #: rooms go unavailable when the estimator is blind, which must not
+        #: read as "the room emptied" — the held value bridges the outage.
+        self._presence_hold: dict[str, bool] = {}
         for zone in options.get(CONF_ZONES) or []:
             zone_id = zone["zone_id"]
-            sensors = _zone_occupancy_sensors(zone)
+            # Plain sensors only; the presence entity is aggregated via its
+            # held value (blind ≠ absent) but shares the subscription path.
+            self._occ_sensors_by_zone[zone_id] = tuple(zone.get("occupancy") or ())
             tvs = tuple(zone.get("tvs") or ())
-            self._occ_sensors_by_zone[zone_id] = sensors
             self._tvs_by_zone[zone_id] = tvs
-            for sensor in sensors:
+            for sensor in _zone_occupancy_sensors(zone):
                 self._zones_by_occ_sensor.setdefault(sensor, []).append(zone_id)
             for tv in tvs:
                 self._zones_by_tv.setdefault(tv, []).append(zone_id)
             if presence := zone.get("presence_entity"):
+                self._presence_by_zone[zone_id] = presence
+                self._presence_hold.setdefault(presence, _tri_state(hass, presence) is True)
                 # The activity sensor lives on the same Presence Conductor
                 # room device; resolved from the registry so it self-heals.
                 activity_entity = discovery.presence_activity_sensor(hass, presence)
@@ -619,10 +632,25 @@ class SonosConductorController:
             self.submit(PlaybackChanged(entity_id, playing))
 
     @callback
+    def _zone_occupied(self, zone_id: str) -> bool:
+        """OR of the zone's plain sensors and its presence entity's held
+        value. Plain sensors count unavailable as False (module policy);
+        the presence entity keeps its last definitive report instead."""
+        if any(_is_on(self.hass, e) for e in self._occ_sensors_by_zone[zone_id]):
+            return True
+        presence = self._presence_by_zone.get(zone_id)
+        return presence is not None and self._presence_hold[presence]
+
+    @callback
     def _on_occupancy_event(self, event: HAEvent[EventStateChangedData]) -> None:
         entity_id = event.data["entity_id"]
+        if entity_id in self._presence_hold:
+            # Blind ≠ absent: unavailable leaves the held value untouched.
+            definitive = _tri_state(self.hass, entity_id)
+            if definitive is not None:
+                self._presence_hold[entity_id] = definitive
         for zone_id in self._zones_by_occ_sensor.get(entity_id, ()):
-            occupied = any(_is_on(self.hass, e) for e in self._occ_sensors_by_zone[zone_id])
+            occupied = self._zone_occupied(zone_id)
             if occupied != self._occ_agg.get(zone_id):
                 self._occ_agg[zone_id] = occupied
                 self.submit(OccupancyChanged(zone_id, occupied))

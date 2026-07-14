@@ -7,6 +7,7 @@ import pytest
 from custom_components.sonos_conductor.core import timers
 from custom_components.sonos_conductor.core.events import (
     ActivityChanged,
+    DockChanged,
     HomePresenceChanged,
     OccupancyChanged,
     SetEnabled,
@@ -128,6 +129,32 @@ def test_activity_before_occupancy_seeds_the_episode() -> None:
     h.fire(ActivityChanged("kjokken", EMPTY), at=3.0)
     effects = h.vacate("kjokken", at=3.1)
     assert hold_delay(effects, "kjokken") == pytest.approx(60.0 * 0.3)
+
+
+def test_redock_starts_new_episode() -> None:
+    """Rule 2.2: a stale pre-undock SETTLED peak must not survive a redock."""
+    h = Harness()
+    h.occupy("kjokken", at=1.0)
+    h.fire(ActivityChanged("kjokken", SETTLED), at=100.0)
+    h.fire(DockChanged(KJOKKEN, False), at=200.0)  # STANDALONE
+    # Activity keeps updating while standalone (world model stays fresh)…
+    h.fire(ActivityChanged("kjokken", PASSING), at=300.0)
+    # …and the redock starts a new episode at the current activity.
+    h.fire(DockChanged(KJOKKEN, True), at=301.0)
+    assert h.state.zones["kjokken"].episode_peak is PASSING
+    h.fire(ActivityChanged("kjokken", EMPTY), at=302.0)
+    effects = h.vacate("kjokken", at=302.1)
+    assert hold_delay(effects, "kjokken") == pytest.approx(60.0 * 0.3)
+
+
+def test_redock_seeds_current_settled_activity() -> None:
+    """Redocking into a settled room adopts that activity as the episode."""
+    h = Harness()
+    h.occupy("kjokken", at=1.0)
+    h.fire(DockChanged(KJOKKEN, False), at=2.0)
+    h.fire(ActivityChanged("kjokken", SETTLED), at=100.0)
+    h.fire(DockChanged(KJOKKEN, True), at=101.0)
+    assert h.state.zones["kjokken"].episode_peak is SETTLED
 
 
 def test_activity_for_unknown_zone_is_ignored() -> None:

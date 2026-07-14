@@ -156,6 +156,11 @@ What changes in behavior:
 
 - The zone still fades in the moment the room reports occupied (passing
   counts — the music follows you immediately).
+- Presence Conductor rooms report *unavailable* while the estimator is
+  blind (reload, sensor outage). Sonos Conductor treats that as "no
+  information": the zone keeps its last known occupancy until the room
+  definitively reports on/off again, so an outage never fades your music.
+  Plain occupancy sensors keep the old rule (unavailable counts as clear).
 - The hold time becomes activity-aware: a visit that never rose above
   *passing* releases after `hold_seconds × passing hold scale` (default
   0.3×), while a room someone was *settled* in holds for

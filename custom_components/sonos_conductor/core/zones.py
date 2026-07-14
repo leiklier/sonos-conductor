@@ -230,6 +230,9 @@ def _redock(
     speaker_state.commanded = None  # take ownership back fresh
     if zone_state.occupied or zone_state.tv_playing:
         set_phase(engine, zone.zone_id, ZonePhase.ACTIVE, now)
+        # A redock starts a new activity episode (1.7): whatever peaked
+        # before the undock belongs to a visit the conductor did not own.
+        zone_state.episode_peak = zone_state.activity
         overrides[zone.speaker_id] = engine.config.tunables.fade_in
     else:
         set_phase(engine, zone.zone_id, ZonePhase.IDLE, now)

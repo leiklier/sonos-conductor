@@ -647,6 +647,53 @@ async def test_presence_entity_ors_into_zone_occupancy(hass: HomeAssistant, monk
     assert fake.events_of(OccupancyChanged)[-1] == OccupancyChanged("kjokken", False)
 
 
+async def test_presence_unavailable_holds_last_occupancy(hass: HomeAssistant, monkeypatch) -> None:
+    """Blind ≠ absent: a presence room going unavailable must not read as
+    the room emptying — the held value bridges the outage."""
+    _, _controller, fake = await setup_presence_conductor(hass, monkeypatch)
+
+    hass.states.async_set(PC_OCC, "on")
+    await hass.async_block_till_done()
+    assert fake.events_of(OccupancyChanged) == [OccupancyChanged("kjokken", True)]
+
+    # Estimator reload/outage: no OccupancyChanged(False), no release timer.
+    hass.states.async_set(PC_OCC, "unavailable")
+    await hass.async_block_till_done()
+    assert len(fake.events_of(OccupancyChanged)) == 1
+
+    # Recovery to the held value: no flap either.
+    hass.states.async_set(PC_OCC, "on")
+    await hass.async_block_till_done()
+    assert len(fake.events_of(OccupancyChanged)) == 1
+
+    # A definitive off is honored, including straight out of an outage.
+    hass.states.async_set(PC_OCC, "unavailable")
+    await hass.async_block_till_done()
+    hass.states.async_set(PC_OCC, "off")
+    await hass.async_block_till_done()
+    assert fake.events_of(OccupancyChanged) == [
+        OccupancyChanged("kjokken", True),
+        OccupancyChanged("kjokken", False),
+    ]
+
+
+async def test_plain_sensor_unavailable_still_counts_as_clear(
+    hass: HomeAssistant, monkeypatch
+) -> None:
+    """The hold applies to the presence entity only; plain sensors keep the
+    module policy (unavailable = False) even in a presence-backed zone."""
+    _, _controller, fake = await setup_presence_conductor(hass, monkeypatch)
+
+    hass.states.async_set(OCC_KJOKKEN, "on")
+    await hass.async_block_till_done()
+    hass.states.async_set(OCC_KJOKKEN, "unavailable")
+    await hass.async_block_till_done()
+    assert fake.events_of(OccupancyChanged) == [
+        OccupancyChanged("kjokken", True),
+        OccupancyChanged("kjokken", False),
+    ]
+
+
 async def test_activity_sensor_translation(hass: HomeAssistant, monkeypatch) -> None:
     _, _controller, fake = await setup_presence_conductor(hass, monkeypatch)
 
