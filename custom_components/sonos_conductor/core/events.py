@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .model import TvSoloMode
+from .model import PresenceActivity, TvSoloMode
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,6 +31,25 @@ class Event:
 class OccupancyChanged(Event):
     zone_id: str
     occupied: bool
+
+
+@dataclass(frozen=True, slots=True)
+class ActivityChanged(Event):
+    """A zone's rich activity classification changed (rule 1.7).
+
+    Emitted only for zones backed by a presence estimator; ``None`` means
+    the estimator went blind (no information, not "empty").
+    """
+
+    zone_id: str
+    activity: PresenceActivity | None
+
+
+@dataclass(frozen=True, slots=True)
+class HomePresenceChanged(Event):
+    """Home-level presence changed (rule 1.8). ``None`` = estimator blind."""
+
+    present: bool | None
 
 
 @dataclass(frozen=True, slots=True)

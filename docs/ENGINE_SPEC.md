@@ -47,7 +47,18 @@ Reconciliation is *the* only way volumes are changed. Every event handler is
     audibility (IDLE→ACTIVE yes, RELEASING→ACTIVE no).
 
 1.2 `OccupancyChanged(occupied=False)` while ACTIVE → RELEASING +
-    `StartTimer(zone_release(zone), hold_seconds)`. Volume unchanged.
+    `StartTimer(zone_release(zone), hold_seconds × hold_scale)`. Volume
+    unchanged. `hold_scale` comes from the zone's episode peak (rule 1.7):
+
+    | episode peak | hold_scale |
+    |---|---|
+    | SETTLED | `hold_settled_scale` |
+    | PASSING | `hold_passing_scale` |
+    | anything else (ACTIVE, EMPTY, no activity input) | 1.0 |
+
+    Rationale: a walk-through must not leave music lingering; stepping out
+    of a room you were settled in must not fade it while you fetch
+    something.
 
 1.3 `TimerFired(zone_release(zone))` while RELEASING → IDLE, reconcile
     (fade-out). Stale release timers (zone no longer RELEASING) are ignored.
@@ -62,8 +73,32 @@ Reconciliation is *the* only way volumes are changed. Every event handler is
     fallback zone returns to IDLE via the normal occupancy rules the moment
     another zone becomes audible — implement as: fallback zone is audible iff
     `occupied ∨ tv_playing ∨ no other zone audible`; keep its phase in sync).
+    Forcing additionally requires `anyone_home is not False` (rule 1.8).
 
 1.6 Phase changes never emit volume effects directly — only reconcile() does.
+
+1.7 **Activity** (rich presence input, optional): `ActivityChanged(zone,
+    activity ∈ {EMPTY, PASSING, ACTIVE, SETTLED} | None)` updates
+    `ZoneState.activity` — state only, never a phase or volume change
+    (`None` = the estimator is blind: no information, not "empty").
+    The engine tracks an **episode peak** per zone: the most severe
+    activity (severity SETTLED > ACTIVE > PASSING > EMPTY; `None` carries
+    no information) observed since the zone last became audible:
+    - IDLE→ACTIVE starts a new episode: peak := current activity.
+    - RELEASING→ACTIVE is the same episode: peak := max(peak, activity).
+    - While ACTIVE, each `ActivityChanged` raises the peak.
+    The peak selects the hold-time scale in rule 1.2. Zones without an
+    activity input keep `activity = None` and behave exactly as before.
+
+1.8 **Home presence** (optional): `HomePresenceChanged(present)` stores
+    `EngineState.anyone_home` (state update even while disabled), then
+    reconciles. While `anyone_home is False`, rule 1.5 fallback forcing is
+    suspended: a *forced* fallback zone returns to IDLE (fade-out) even
+    though no other zone is audible — an empty home should be silent.
+    Zones audible on their own merits (occupied / TV) are unaffected.
+    When presence returns (True or None) and nothing is audible, forcing
+    resumes (fade-in): music greets whoever comes home. `None` (no input
+    configured, estimator blind) behaves as present — fail-safe.
 
 ## 2. Dock / standalone
 
@@ -201,6 +236,9 @@ Reconciliation is *the* only way volumes are changed. Every event handler is
 9.1 Seed all state from `InitialSnapshot`. Dockable speakers undocked in the
     snapshot start STANDALONE. Zone phases derive from occupancy/tv inputs
     (no hold timers pending — an unoccupied zone starts IDLE, not RELEASING).
+    Activity and `anyone_home` seed like any flag; a zone seeded audible
+    starts its episode at the seeded activity (rule 1.7), and fallback
+    forcing respects rule 1.8 at seed time.
 
 9.2 Master: use `snapshot.master` if given; else the **median** of
     `implied_master(volume, trim, room_scale)` over audible zones with a

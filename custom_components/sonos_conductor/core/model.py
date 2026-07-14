@@ -21,6 +21,38 @@ class ZonePhase(StrEnum):
     STANDALONE = "standalone"  # speaker undocked: excluded from the conductor
 
 
+class PresenceActivity(StrEnum):
+    """Rich activity classification from a presence estimator (rule 1.7).
+
+    Values mirror Presence Conductor's room activity enum; the adapter maps
+    sensor states onto them. ``None`` (no activity input configured, or the
+    estimator is unavailable) means "no information" — never "empty".
+    """
+
+    EMPTY = "empty"
+    PASSING = "passing"  # walk-through: presence without intent to stay
+    ACTIVE = "active"  # someone is there and moving
+    SETTLED = "settled"  # someone has been there a while (sofa, desk, meal)
+
+
+#: Severity order for episode-peak tracking: settled > active > passing > empty.
+ACTIVITY_SEVERITY: dict[PresenceActivity, int] = {
+    PresenceActivity.EMPTY: 0,
+    PresenceActivity.PASSING: 1,
+    PresenceActivity.ACTIVE: 2,
+    PresenceActivity.SETTLED: 3,
+}
+
+
+def max_activity(a: PresenceActivity | None, b: PresenceActivity | None) -> PresenceActivity | None:
+    """The more severe of two activities; ``None`` carries no information."""
+    if a is None:
+        return b
+    if b is None:
+        return a
+    return a if ACTIVITY_SEVERITY[a] >= ACTIVITY_SEVERITY[b] else b
+
+
 class TvSoloMode(StrEnum):
     """How aggressively a playing TV silences the rest of the house (rule 6.2)."""
 
@@ -98,6 +130,13 @@ class Tunables:
     #: Absolute volume ceiling for every speaker while night mode is active.
     #: Duck inputs with a lower cap still win (the lowest cap applies).
     night_volume_cap: float = 0.15
+    #: Hold-time multiplier when a zone's occupancy episode never rose above
+    #: PASSING (rule 1.2): a walk-through should not leave music lingering.
+    hold_passing_scale: float = 0.3
+    #: Hold-time multiplier when a zone's occupancy episode reached SETTLED
+    #: (rule 1.2): stepping out of a room you were settled in should not
+    #: fade the music while you fetch something.
+    hold_settled_scale: float = 4.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -140,6 +179,11 @@ class ZoneState:
     phase: ZonePhase = ZonePhase.IDLE
     occupied: bool = False
     tv_playing: bool = False
+    #: Latest reported activity (rule 1.7); None = no activity input.
+    activity: PresenceActivity | None = None
+    #: Most severe activity seen since the zone last became audible from
+    #: IDLE (rule 1.7). Selects the hold-time scale when release begins.
+    episode_peak: PresenceActivity | None = None
     #: Monotonic timestamp of the last phase change (drives suppression).
     last_transition: float = float("-inf")
 
@@ -176,6 +220,9 @@ class EngineState:
     #: Zone ids currently solo-suppressed (rule 6.2). Engine-maintained,
     #: published so the adapter never re-derives suppression itself.
     suppressed: frozenset[str] = frozenset()
+    #: Home-level presence (rule 1.8). ``False`` suspends fallback forcing;
+    #: ``None`` (no input configured / estimator blind) behaves as present.
+    anyone_home: bool | None = None
     zones: dict[str, ZoneState] = field(default_factory=dict)
     speakers: dict[str, SpeakerState] = field(default_factory=dict)
     duck_active: dict[str, bool] = field(default_factory=dict)
@@ -197,6 +244,10 @@ class InitialSnapshot:
     playing: Mapping[str, bool]  # speaker_id -> is playing
     group_members: Mapping[str, tuple[str, ...]]  # speaker_id -> members
     duck_active: Mapping[str, bool]  # input_id -> active
+    #: zone_id -> current activity; absent/None = no activity input (1.7).
+    activity: Mapping[str, PresenceActivity | None] = field(default_factory=dict)
+    #: Home-level presence at startup (rule 1.8); None = no input configured.
+    anyone_home: bool | None = None
     #: Restored master volume (e.g. from a RestoreEntity); None = infer from
     #: the median of ``volume / (trim * room_scale)`` across audible zones.
     master: float | None = None
