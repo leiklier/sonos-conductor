@@ -13,4 +13,7 @@ CONF_DUCK_INPUTS = (
 )
 CONF_PRIMARY_SPEAKER = "primary_speaker"
 CONF_TUNABLES = "tunables"  # dict mirroring core.model.Tunables fields
+# Optional home-level presence entity (Presence Conductor "Anyone home").
+# While it reports "off" the fallback zone is not forced audible (rule 1.8).
+CONF_HOME_PRESENCE = "home_presence_entity"
 CONF_HOMEKIT_SOURCES = "homekit_sources"  # list[str]; empty = mirror the leader's full source_list

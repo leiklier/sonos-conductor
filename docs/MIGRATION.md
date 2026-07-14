@@ -142,3 +142,35 @@ announcements); selecting it does nothing. Limit which sources appear under
 *Configure → Media — sources exposed to HomeKit* (empty = all). Reload the
 HomeKit entry after changing the selection so the Home app picks up the new
 inputs.
+
+## Upgrading to rich presence (Presence Conductor)
+
+If [Presence Conductor](https://github.com/leiklier/presence-conductor) is
+installed, point each zone at its room instead of raw radar/template
+sensors: *Configure → Zones*, pick the room's occupancy sensor in
+**Presence Conductor room** and clear the plain **Occupancy sensors** list
+(discovery pre-fills exactly this for new installs). The room's activity
+sensor is found automatically on the same device; no extra selection needed.
+
+What changes in behavior:
+
+- The zone still fades in the moment the room reports occupied (passing
+  counts — the music follows you immediately).
+- Presence Conductor rooms report *unavailable* while the estimator is
+  blind (reload, sensor outage). Sonos Conductor treats that as "no
+  information": the zone keeps its last known occupancy until the room
+  definitively reports on/off again, so an outage never fades your music.
+  Plain occupancy sensors keep the old rule (unavailable counts as clear).
+- The hold time becomes activity-aware: a visit that never rose above
+  *passing* releases after `hold_seconds × passing hold scale` (default
+  0.3×), while a room someone was *settled* in holds for
+  `hold_seconds × settled hold scale` (default 4×). Both scales live under
+  *Configure → Tunables*.
+- Under *Configure → Home presence*, select Presence Conductor's
+  **Anyone home** sensor to silence the fallback zone while the home is
+  empty (replaces radio-on-arrival style automations: the fallback fades
+  back in when someone comes home). If the sensor goes unavailable the
+  conductor fails safe and behaves as if someone is home.
+
+Zone template helpers like `*_audio_zone` that merely OR occupancy sources
+can be deleted once their zone points at a Presence Conductor room.

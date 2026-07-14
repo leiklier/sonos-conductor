@@ -10,6 +10,15 @@ a testable state machine replacing YAML automation sprawl.
 - **Master volume** — one slider / dial / HomeKit control for the whole house.
 - **Presence zones** — speakers fade in when a zone becomes occupied and fade
   out (after a hold time) when it empties.
+- **Rich presence via [Presence Conductor](https://github.com/leiklier/presence-conductor)** —
+  when installed, its room devices are auto-discovered and preferred over
+  plain binary sensors. Their activity classification shapes the hold time:
+  walking through a room releases the music quickly, while stepping out of a
+  room you were settled in keeps it playing much longer. Plain
+  motion/occupancy sensors keep working exactly as before.
+- **Empty-home silence** — optionally gate the fallback zone on a home-level
+  presence sensor (e.g. Presence Conductor's *Anyone home*): the music stops
+  when the last person leaves and fades back in when someone returns.
 - **Acoustic compensation** — zones that share a room are scaled by `1/√N` so
   total loudness stays constant as people move around.
 - **Loudness trims** — per-speaker ratios compensate for hardware differences
@@ -51,6 +60,19 @@ as a custom repository (category: integration), install, restart, then add the
 **Sonos Conductor** integration. The config flow discovers your Sonos
 speakers, their areas, occupancy sensors, TVs, and dock sensors and suggests a
 configuration — you only confirm and group zones into acoustic rooms.
+
+## Releases & channels
+
+Sonos Conductor ships in two channels:
+
+- **Stable** — plain releases (`vX.Y.Z`). What HACS installs by default.
+- **Beta** — pre-releases (`vX.Y.Z-beta.N`, marked *pre-release* on GitHub).
+  New behavioral features soak here before promotion to stable. To follow the
+  beta channel, open the repository in HACS, enable **Show beta versions**
+  under the repo's overflow menu, and redownload.
+
+A beta is promoted unchanged to a stable release after it has run without
+regressions on a real installation.
 
 ## Development
 

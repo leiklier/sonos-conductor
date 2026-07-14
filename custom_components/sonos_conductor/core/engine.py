@@ -31,12 +31,14 @@ from statistics import median
 from . import audio, grouping, reconcile, timers, zones
 from .effects import Effect
 from .events import (
+    ActivityChanged,
     DockChanged,
     DuckChanged,
     Event,
     ExternalMute,
     ExternalVolume,
     GroupMembersReported,
+    HomePresenceChanged,
     OccupancyChanged,
     PlaybackChanged,
     SetEnabled,
@@ -103,9 +105,11 @@ class ConductorEngine:
                 docked=snapshot.docked.get(sid, True),
                 group_members=tuple(snapshot.group_members.get(sid, ())),
             )
+        state.anyone_home = snapshot.anyone_home  # 1.8 seeds like any flag (9.1)
         for zone in self.config.zones:
             occupied = snapshot.occupancy.get(zone.zone_id, False)
             tv = snapshot.tv_playing.get(zone.zone_id, False)
+            activity = snapshot.activity.get(zone.zone_id)
             if not state.speakers[zone.speaker_id].docked:
                 phase = ZonePhase.STANDALONE
             elif occupied or tv:
@@ -113,7 +117,14 @@ class ConductorEngine:
             else:
                 # No hold timers pending at startup: unoccupied = IDLE (9.1).
                 phase = ZonePhase.IDLE
-            state.zones[zone.zone_id] = ZoneState(phase=phase, occupied=occupied, tv_playing=tv)
+            state.zones[zone.zone_id] = ZoneState(
+                phase=phase,
+                occupied=occupied,
+                tv_playing=tv,
+                activity=activity,
+                # An audible zone starts its episode at the current activity.
+                episode_peak=activity if phase is ZonePhase.ACTIVE else None,
+            )
         for duck in self.config.duck_inputs:
             state.duck_active[duck.input_id] = bool(snapshot.duck_active.get(duck.input_id, False))
         state.suppressed = reconcile.compute_suppressed(self)
@@ -121,6 +132,7 @@ class ConductorEngine:
         fallback = self._fallback_zone()
         if (
             state.enabled
+            and state.anyone_home is not False  # 1.8: empty home, no forcing
             and fallback is not None
             and state.zones[fallback.zone_id].phase is ZonePhase.IDLE
             and not any(reconcile.is_audible(self, z.zone_id) for z in self.config.zones)
@@ -176,6 +188,10 @@ class ConductorEngine:
         match event:
             case OccupancyChanged():
                 zones.on_occupancy(self, event, now, plan)
+            case ActivityChanged():
+                zones.on_activity(self, event, now)
+            case HomePresenceChanged():
+                zones.on_home_presence(self, event, now, plan)
             case TvPlayingChanged():
                 zones.on_tv_playing(self, event, now, plan)
             case DockChanged():

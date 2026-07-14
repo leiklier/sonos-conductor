@@ -12,9 +12,23 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from . import reconcile, timers
-from .events import DockChanged, OccupancyChanged, SetTvSoloMode, TvPlayingChanged
+from .events import (
+    ActivityChanged,
+    DockChanged,
+    HomePresenceChanged,
+    OccupancyChanged,
+    SetTvSoloMode,
+    TvPlayingChanged,
+)
 from .grouping import evaluate_group_repair
-from .model import SpeakerState, ZoneConfig, ZonePhase, ZoneState
+from .model import (
+    PresenceActivity,
+    SpeakerState,
+    ZoneConfig,
+    ZonePhase,
+    ZoneState,
+    max_activity,
+)
 from .reconcile import AUDIBLE_PHASES
 
 if TYPE_CHECKING:
@@ -37,6 +51,31 @@ def on_occupancy(engine: ConductorEngine, event: OccupancyChanged, now: float, p
     overrides: dict[str, float] = {}
     apply_zone_inputs(engine, zone, now, plan, overrides)
     engine._finish(plan, now, engine.config.tunables.rebalance_fade, overrides)
+
+
+def on_activity(engine: ConductorEngine, event: ActivityChanged, now: float) -> None:
+    """Rule 1.7: track activity and raise the episode peak while audible.
+
+    State-only — activity never changes audibility by itself (occupancy
+    does); it selects the hold-time scale when release begins (rule 1.2).
+    """
+    zone = engine._zone_config(event.zone_id)
+    if zone is None:  # 10.4
+        return
+    zone_state = engine.state.zones[zone.zone_id]
+    zone_state.activity = event.activity
+    if zone_state.phase is ZonePhase.ACTIVE:
+        zone_state.episode_peak = max_activity(zone_state.episode_peak, event.activity)
+
+
+def on_home_presence(
+    engine: ConductorEngine, event: HomePresenceChanged, now: float, plan: Plan
+) -> None:
+    """Rule 1.8: home-level presence gates fallback forcing."""
+    engine.state.anyone_home = event.present
+    if not engine.state.enabled:
+        return
+    engine._finish(plan, now, engine.config.tunables.rebalance_fade, {})
 
 
 def on_tv_playing(engine: ConductorEngine, event: TvPlayingChanged, now: float, plan: Plan) -> None:
@@ -84,10 +123,13 @@ def _activate(
     if zone_state.phase is ZonePhase.IDLE:
         plan.cancel_timer(timers.zone_release(zone.zone_id))  # 1.1 (idempotent)
         set_phase(engine, zone.zone_id, ZonePhase.ACTIVE, now)
+        zone_state.episode_peak = zone_state.activity  # new episode (1.7)
         overrides[zone.speaker_id] = engine.config.tunables.fade_in
     elif zone_state.phase is ZonePhase.RELEASING:
         plan.cancel_timer(timers.zone_release(zone.zone_id))  # 1.1
         set_phase(engine, zone.zone_id, ZonePhase.ACTIVE, now)  # no volume effect
+        # Same audible episode: the peak carries over the flicker (1.7).
+        zone_state.episode_peak = max_activity(zone_state.episode_peak, zone_state.activity)
     if zone.fallback:
         # A forced-active fallback zone that becomes occupied (or
         # gets a TV) now holds its audibility on its own merits.
@@ -103,7 +145,19 @@ def _begin_release(
     if zone.fallback and engine._fallback_forced:
         return
     set_phase(engine, zone.zone_id, ZonePhase.RELEASING, now)  # 1.2
-    plan.start_timer(timers.zone_release(zone.zone_id), zone.hold_seconds)
+    hold = zone.hold_seconds * _hold_scale(engine, zone_state)
+    plan.start_timer(timers.zone_release(zone.zone_id), hold)
+
+
+def _hold_scale(engine: ConductorEngine, zone_state: ZoneState) -> float:
+    """Activity-scaled hold time (rule 1.2): the episode peak decides how
+    long a vacated zone stays audible. No activity information = 1.0."""
+    peak = zone_state.episode_peak
+    if peak is PresenceActivity.SETTLED:
+        return engine.config.tunables.hold_settled_scale
+    if peak is PresenceActivity.PASSING:
+        return engine.config.tunables.hold_passing_scale
+    return 1.0
 
 
 def on_release_fired(engine: ConductorEngine, zone_id: str, now: float, plan: Plan) -> None:
@@ -176,6 +230,9 @@ def _redock(
     speaker_state.commanded = None  # take ownership back fresh
     if zone_state.occupied or zone_state.tv_playing:
         set_phase(engine, zone.zone_id, ZonePhase.ACTIVE, now)
+        # A redock starts a new activity episode (1.7): whatever peaked
+        # before the undock belongs to a visit the conductor did not own.
+        zone_state.episode_peak = zone_state.activity
         overrides[zone.speaker_id] = engine.config.tunables.fade_in
     else:
         set_phase(engine, zone.zone_id, ZonePhase.IDLE, now)
@@ -218,6 +275,8 @@ def _force_fallback_active(
     overrides: dict[str, float],
 ) -> None:
     """An IDLE fallback zone goes ACTIVE when nothing else is audible."""
+    if engine.state.anyone_home is False:  # 1.8: empty home, no forcing
+        return
     if _others_audible(engine, zone):
         return
     effective = zone_state.occupied or zone_state.tv_playing
@@ -237,7 +296,9 @@ def _retire_forced_fallback(
     if zone_state.occupied or zone_state.tv_playing:
         engine._fallback_forced = False  # earned its audibility
         return
-    if not _others_audible(engine, zone):
+    # 1.8: forcing is unearned audibility; an empty home retires it even
+    # though nothing else is audible (silence is the point).
+    if engine.state.anyone_home is not False and not _others_audible(engine, zone):
         return
     # Returns to IDLE the moment another zone becomes audible.
     set_phase(engine, zone.zone_id, ZonePhase.IDLE, now)
@@ -285,6 +346,12 @@ def recompute_phase(engine: ConductorEngine, zone: ZoneConfig, now: float) -> No
     if not engine.state.speakers[zone.speaker_id].docked:
         set_phase(engine, zone.zone_id, ZonePhase.STANDALONE, now)
     elif zone_state.occupied or zone_state.tv_playing:
+        was_audible = zone_state.phase in AUDIBLE_PHASES
         set_phase(engine, zone.zone_id, ZonePhase.ACTIVE, now)
+        # Episode-peak bookkeeping mirrors _activate (rule 1.7).
+        if was_audible:
+            zone_state.episode_peak = max_activity(zone_state.episode_peak, zone_state.activity)
+        else:
+            zone_state.episode_peak = zone_state.activity
     else:
         set_phase(engine, zone.zone_id, ZonePhase.IDLE, now)

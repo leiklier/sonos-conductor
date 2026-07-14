@@ -82,6 +82,10 @@ class SonosConductorZoneSensor(ConductorEntity, BinarySensorEntity):
             "phase": str(zone_state.phase),
             "occupied": zone_state.occupied,
             "tv_playing": zone_state.tv_playing,
+            "activity": str(zone_state.activity) if zone_state.activity is not None else None,
+            "episode_peak": str(zone_state.episode_peak)
+            if zone_state.episode_peak is not None
+            else None,
             "room": self._zone.room_id,
             "room_scale": scale,
             "target_volume": speaker_target(state.master, trim, scale) if audible else 0.0,
