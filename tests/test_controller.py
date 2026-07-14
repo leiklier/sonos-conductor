@@ -9,6 +9,7 @@ services over any earlier mocks).
 
 from __future__ import annotations
 
+import copy
 from datetime import timedelta
 from typing import Any
 
@@ -29,17 +30,20 @@ from custom_components.sonos_conductor.core.effects import (
     StartTimer,
 )
 from custom_components.sonos_conductor.core.events import (
+    ActivityChanged,
     DockChanged,
     DuckChanged,
     ExternalMute,
     ExternalVolume,
     GroupMembersReported,
+    HomePresenceChanged,
     OccupancyChanged,
     PlaybackChanged,
     SetMaster,
     TimerFired,
     TvPlayingChanged,
 )
+from custom_components.sonos_conductor.core.model import PresenceActivity
 from tests.fake_engine import FakeEngine
 
 SOFA = "media_player.sofakrok_sonos"
@@ -562,3 +566,142 @@ async def test_master_persist_flushes_on_unload(hass: HomeAssistant, monkeypatch
     assert await hass.config_entries.async_unload(entry.entry_id)
     await hass.async_block_till_done()
     assert entry.options["last_master"] == 0.44
+
+
+# ---------------------------------------------------------------------------
+# Presence Conductor inputs (rich presence)
+# ---------------------------------------------------------------------------
+
+PC_OCC = "binary_sensor.kjokken_presence_room_occupancy"
+PC_ACT = "sensor.kjokken_presence_room_activity"
+PC_HOME = "binary_sensor.presence_conductor_anyone_home"
+
+
+def _presence_options() -> dict[str, Any]:
+    """OPTIONS with a Presence Conductor room on kjøkken + a home gate."""
+    options = copy.deepcopy(OPTIONS)
+    for zone in options["zones"]:
+        if zone["zone_id"] == "kjokken":
+            zone["presence_entity"] = PC_OCC
+    options["home_presence_entity"] = PC_HOME
+    return options
+
+
+async def _stage_presence_registry(hass: HomeAssistant) -> None:
+    """Register the Presence Conductor room device so the controller can
+    resolve the activity sensor as the occupancy entity's device sibling."""
+    from homeassistant.helpers import device_registry as dr
+    from homeassistant.helpers import entity_registry as er
+
+    entry = MockConfigEntry(domain="presence_conductor")
+    entry.add_to_hass(hass)
+    dev_reg = dr.async_get(hass)
+    ent_reg = er.async_get(hass)
+    room = dev_reg.async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={("presence_conductor", "room_kjokken")},
+        name="Kjøkken presence",
+    )
+    ent_reg.async_get_or_create(
+        "binary_sensor",
+        "presence_conductor",
+        "pc_kjokken_occ",
+        suggested_object_id="kjokken_presence_room_occupancy",
+        device_id=room.id,
+        original_device_class="occupancy",
+        translation_key="room_occupancy",
+    )
+    ent_reg.async_get_or_create(
+        "sensor",
+        "presence_conductor",
+        "pc_kjokken_act",
+        suggested_object_id="kjokken_presence_room_activity",
+        device_id=room.id,
+        translation_key="room_activity",
+    )
+
+
+async def setup_presence_conductor(hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch):
+    await _stage_presence_registry(hass)
+    hass.states.async_set(PC_OCC, "off")
+    hass.states.async_set(PC_ACT, "empty")
+    hass.states.async_set(PC_HOME, "on")
+    return await setup_conductor(hass, monkeypatch, options=_presence_options())
+
+
+async def test_presence_entity_ors_into_zone_occupancy(hass: HomeAssistant, monkeypatch) -> None:
+    _, _controller, fake = await setup_presence_conductor(hass, monkeypatch)
+
+    hass.states.async_set(PC_OCC, "on")
+    await hass.async_block_till_done()
+    assert fake.events_of(OccupancyChanged) == [OccupancyChanged("kjokken", True)]
+
+    # A plain sensor holds the zone occupied while the presence room clears.
+    hass.states.async_set(OCC_KJOKKEN, "on")
+    hass.states.async_set(PC_OCC, "off")
+    await hass.async_block_till_done()
+    assert len(fake.events_of(OccupancyChanged)) == 1
+
+    hass.states.async_set(OCC_KJOKKEN, "off")
+    await hass.async_block_till_done()
+    assert fake.events_of(OccupancyChanged)[-1] == OccupancyChanged("kjokken", False)
+
+
+async def test_activity_sensor_translation(hass: HomeAssistant, monkeypatch) -> None:
+    _, _controller, fake = await setup_presence_conductor(hass, monkeypatch)
+
+    hass.states.async_set(PC_ACT, "passing")
+    await hass.async_block_till_done()
+    hass.states.async_set(PC_ACT, "settled")
+    await hass.async_block_till_done()
+    assert fake.events_of(ActivityChanged) == [
+        ActivityChanged("kjokken", PresenceActivity.PASSING),
+        ActivityChanged("kjokken", PresenceActivity.SETTLED),
+    ]
+
+    # Blind estimator: unavailable maps to None (no information).
+    hass.states.async_set(PC_ACT, "unavailable")
+    await hass.async_block_till_done()
+    assert fake.events_of(ActivityChanged)[-1] == ActivityChanged("kjokken", None)
+
+    # An unexpected state is also "no information": aggregate unchanged.
+    hass.states.async_set(PC_ACT, "flying")
+    await hass.async_block_till_done()
+    assert len(fake.events_of(ActivityChanged)) == 3
+
+
+async def test_home_presence_translation(hass: HomeAssistant, monkeypatch) -> None:
+    _, _controller, fake = await setup_presence_conductor(hass, monkeypatch)
+
+    hass.states.async_set(PC_HOME, "off")
+    await hass.async_block_till_done()
+    hass.states.async_set(PC_HOME, "unavailable")
+    await hass.async_block_till_done()
+    hass.states.async_set(PC_HOME, "on")
+    await hass.async_block_till_done()
+    assert fake.events_of(HomePresenceChanged) == [
+        HomePresenceChanged(False),
+        HomePresenceChanged(None),
+        HomePresenceChanged(True),
+    ]
+
+
+async def test_snapshot_seeds_presence_inputs(hass: HomeAssistant, monkeypatch) -> None:
+    """Occupancy ORs the presence room in; activity and anyone_home seed."""
+    await _stage_presence_registry(hass)
+    hass.states.async_set(PC_OCC, "on")
+    hass.states.async_set(PC_ACT, "settled")
+    hass.states.async_set(PC_HOME, "off")
+    _, _controller, fake = await setup_conductor(hass, monkeypatch, options=_presence_options())
+
+    assert fake.snapshot.occupancy["kjokken"] is True
+    assert fake.snapshot.activity["kjokken"] is PresenceActivity.SETTLED
+    assert fake.snapshot.anyone_home is False
+
+
+async def test_snapshot_without_presence_entities(hass: HomeAssistant, monkeypatch) -> None:
+    """Plain configuration: no activity map entries, anyone_home unknown."""
+    _, _controller, fake = await setup_conductor(hass, monkeypatch)
+
+    assert fake.snapshot.activity == {}
+    assert fake.snapshot.anyone_home is None

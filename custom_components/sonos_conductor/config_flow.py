@@ -39,6 +39,7 @@ from homeassistant.util import slugify
 from . import discovery
 from .const import (
     CONF_DUCK_INPUTS,
+    CONF_HOME_PRESENCE,
     CONF_HOMEKIT_SOURCES,
     CONF_PRIMARY_SPEAKER,
     CONF_SPEAKERS,
@@ -73,6 +74,8 @@ _TUNABLE_UI: dict[str, tuple[float, float, float, str | None]] = {
     "group_repair_delay": (0, 300, 1, "s"),
     "startup_tolerance": (0, 0.5, 0.01, None),
     "night_volume_cap": (0.0, 1.0, 0.01, None),
+    "hold_passing_scale": (0.0, 2.0, 0.05, None),
+    "hold_settled_scale": (1.0, 10.0, 0.5, None),
 }
 _TUNABLE_FALLBACK_UI: tuple[float, float, float, str | None] = (0, 600, 0.01, None)
 
@@ -92,6 +95,13 @@ def _zone_schema(include_name: bool) -> vol.Schema:
     schema.update(
         {
             vol.Required("room"): TextSelector(),
+            vol.Optional("presence_entity"): EntitySelector(
+                EntitySelectorConfig(
+                    domain="binary_sensor",
+                    integration=discovery.PRESENCE_PLATFORM,
+                    device_class="occupancy",
+                )
+            ),
             vol.Optional("occupancy", default=[]): EntitySelector(
                 EntitySelectorConfig(domain="binary_sensor", multiple=True)
             ),
@@ -129,6 +139,21 @@ def _ducks_schema() -> vol.Schema:
             vol.Required("release_fade", default=_DUCK_DEFAULTS["release_fade"]): _number(
                 0, 30, 0.5, "s"
             ),
+        }
+    )
+
+
+def _home_schema() -> vol.Schema:
+    """Optional home-level presence input (Presence Conductor "Anyone home")."""
+    return vol.Schema(
+        {
+            vol.Optional("home_presence_entity"): EntitySelector(
+                EntitySelectorConfig(
+                    domain="binary_sensor",
+                    integration=discovery.PRESENCE_PLATFORM,
+                    device_class="presence",
+                )
+            )
         }
     )
 
@@ -189,6 +214,7 @@ class SonosConductorConfigFlow(ConfigFlow, domain=DOMAIN):
         self._zones: list[dict[str, Any]] = []
         self._speakers: list[dict[str, Any]] = []
         self._ducks: list[dict[str, Any]] = []
+        self._home_presence: str | None = None
 
     @staticmethod
     @callback
@@ -257,6 +283,7 @@ class SonosConductorConfigFlow(ConfigFlow, domain=DOMAIN):
                         "name": user_input["name"],
                         "speaker": speaker.entity_id,
                         "room": slugify(user_input["room"]),
+                        "presence_entity": user_input.get("presence_entity"),
                         "occupancy": user_input["occupancy"],
                         "tvs": user_input["tvs"],
                         "hold_seconds": user_input["hold_seconds"],
@@ -280,12 +307,17 @@ class SonosConductorConfigFlow(ConfigFlow, domain=DOMAIN):
             # Redisplay after a validation error: keep what the user typed.
             suggested = user_input
         else:
+            # A Presence Conductor room is the preferred presence source:
+            # when one matches the area, suggest it and leave the plain
+            # occupancy sensors empty (they remain selectable as extras).
+            presence = discovery.suggest_presence(self.hass, speaker.area_id, speaker.area_name)
             suggested = {
                 "name": speaker.area_name or speaker.name,
                 "room": speaker.area_name or speaker.name,
-                "occupancy": discovery.suggest_occupancy(
-                    self.hass, speaker.area_id, speaker.area_name
-                ),
+                "presence_entity": presence,
+                "occupancy": []
+                if presence
+                else discovery.suggest_occupancy(self.hass, speaker.area_id, speaker.area_name),
                 "tvs": discovery.suggest_tvs(self.hass, speaker.area_id),
                 "dock_sensor": speaker.dock_sensor,
             }
@@ -308,8 +340,19 @@ class SonosConductorConfigFlow(ConfigFlow, domain=DOMAIN):
         """Select duck inputs and their shared cap/fade."""
         if user_input is not None:
             self._ducks = _build_duck_inputs(self.hass, user_input, [])
-            return await self.async_step_tunables()
+            return await self.async_step_home()
         return self.async_show_form(step_id="ducks", data_schema=_ducks_schema())
+
+    async def async_step_home(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """Optional home-level presence gate for the fallback zone."""
+        if user_input is not None:
+            self._home_presence = user_input.get("home_presence_entity")
+            return await self.async_step_tunables()
+        schema = self.add_suggested_values_to_schema(
+            _home_schema(),
+            {"home_presence_entity": discovery.suggest_home_presence(self.hass)},
+        )
+        return self.async_show_form(step_id="home", data_schema=schema)
 
     async def async_step_tunables(
         self, user_input: dict[str, Any] | None = None
@@ -321,6 +364,7 @@ class SonosConductorConfigFlow(ConfigFlow, domain=DOMAIN):
                 CONF_ZONES: self._zones,
                 CONF_DUCK_INPUTS: self._ducks,
                 CONF_PRIMARY_SPEAKER: _primary_speaker(self._zones, self._speakers),
+                CONF_HOME_PRESENCE: self._home_presence,
                 CONF_TUNABLES: _tunables_from_input(user_input),
             }
             return self.async_create_entry(title="Sonos Conductor", data={}, options=options)
@@ -347,8 +391,25 @@ class SonosConductorOptionsFlow(OptionsFlow):
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Section menu."""
         return self.async_show_menu(
-            step_id="init", menu_options=["zones", "ducks", "tunables", "media"]
+            step_id="init", menu_options=["zones", "ducks", "home", "tunables", "media"]
         )
+
+    async def async_step_home(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """Edit the home-level presence gate."""
+        if user_input is not None:
+            return self._save({CONF_HOME_PRESENCE: user_input.get("home_presence_entity")})
+        stored = self.config_entry.options.get(CONF_HOME_PRESENCE)
+        schema = self.add_suggested_values_to_schema(
+            _home_schema(),
+            # Stored value wins; discovery only fills the gap for entries
+            # created before the option existed.
+            {
+                "home_presence_entity": stored
+                if CONF_HOME_PRESENCE in self.config_entry.options
+                else discovery.suggest_home_presence(self.hass)
+            },
+        )
+        return self.async_show_form(step_id="home", data_schema=schema)
 
     async def async_step_media(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Choose which leader sources the master player exposes (e.g. to HomeKit)."""
@@ -411,6 +472,7 @@ class SonosConductorOptionsFlow(OptionsFlow):
                 zone.update(
                     {
                         "room": slugify(user_input["room"]),
+                        "presence_entity": user_input.get("presence_entity"),
                         "occupancy": user_input["occupancy"],
                         "tvs": user_input["tvs"],
                         "hold_seconds": user_input["hold_seconds"],
@@ -447,6 +509,12 @@ class SonosConductorOptionsFlow(OptionsFlow):
             disc = discovered.get(zone["speaker"])
             suggested = {
                 "room": zone.get("room") or (disc.area_name if disc else zone["name"]),
+                "presence_entity": zone.get(
+                    "presence_entity",
+                    discovery.suggest_presence(self.hass, disc.area_id, disc.area_name)
+                    if disc
+                    else None,
+                ),
                 "occupancy": zone.get(
                     "occupancy",
                     discovery.suggest_occupancy(self.hass, disc.area_id, disc.area_name)

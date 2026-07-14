@@ -34,6 +34,7 @@ class FakeEngine:
         self.state = EngineState()
         if snapshot.master is not None:
             self.state.master = snapshot.master
+        self.state.anyone_home = snapshot.anyone_home
         for zone in config.zones:
             occupied = bool(snapshot.occupancy.get(zone.zone_id, False))
             tv_playing = bool(snapshot.tv_playing.get(zone.zone_id, False))
@@ -41,6 +42,7 @@ class FakeEngine:
                 phase=ZonePhase.ACTIVE if (occupied or tv_playing) else ZonePhase.IDLE,
                 occupied=occupied,
                 tv_playing=tv_playing,
+                activity=snapshot.activity.get(zone.zone_id),
             )
         for speaker in config.speakers:
             self.state.speakers[speaker.speaker_id] = SpeakerState(

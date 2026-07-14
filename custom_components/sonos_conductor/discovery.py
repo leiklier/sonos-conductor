@@ -41,6 +41,14 @@ DUCK_DEVICE_CLASSES = ("door", "opening", "window", "garage_door")
 #: A battery-charging sensor on a speaker's device marks it dockable.
 DOCK_DEVICE_CLASS = "battery_charging"
 
+#: The Presence Conductor integration: its room devices are the preferred
+#: presence source (rich activity, robust estimation). Matched via the
+#: entity registry's platform + translation_key, which are stable API.
+PRESENCE_PLATFORM = "presence_conductor"
+PRESENCE_ROOM_OCCUPANCY_KEY = "room_occupancy"
+PRESENCE_ROOM_ACTIVITY_KEY = "room_activity"
+PRESENCE_ANYONE_HOME_KEY = "anyone_home"
+
 
 @dataclass(frozen=True, slots=True)
 class DiscoveredSpeaker:
@@ -154,6 +162,72 @@ def suggest_occupancy(hass: HomeAssistant, area_id: str | None, area_name: str |
         found.update(entity_id for entity_id in candidates if fnmatch(entity_id, pattern))
 
     return sorted(found)
+
+
+def _presence_entries(
+    hass: HomeAssistant, domain: str, translation_key: str
+) -> list[er.RegistryEntry]:
+    """Usable Presence Conductor entities with the given translation key."""
+    return [
+        entry
+        for entry in list(er.async_get(hass).entities.values())
+        if entry.platform == PRESENCE_PLATFORM
+        and entry.domain == domain
+        and entry.translation_key == translation_key
+        and _usable(entry)
+    ]
+
+
+def suggest_presence(hass: HomeAssistant, area_id: str | None, area_name: str | None) -> str | None:
+    """The Presence Conductor room-occupancy sensor matching an area.
+
+    Presence Conductor exposes one device per room (suggested_area = room
+    name), so the primary match is the entity's effective area. Rooms whose
+    device was never assigned an area fall back to a slug match between the
+    area name and the entity id.
+    """
+    dev_reg = dr.async_get(hass)
+    candidates = sorted(
+        _presence_entries(hass, "binary_sensor", PRESENCE_ROOM_OCCUPANCY_KEY),
+        key=lambda entry: entry.entity_id,
+    )
+    if area_id is not None:
+        for entry in candidates:
+            if _effective_area_id(entry, dev_reg) == area_id:
+                return entry.entity_id
+    if area_name:
+        slug = slugify(area_name)
+        for entry in candidates:
+            if slug and slug in entry.entity_id:
+                return entry.entity_id
+    return None
+
+
+def presence_activity_sensor(hass: HomeAssistant, occupancy_entity: str) -> str | None:
+    """The room-activity sensor on the same Presence Conductor room device.
+
+    Resolved from the registry at runtime (not stored in options) so it
+    self-heals if the presence integration is re-added.
+    """
+    entry = er.async_get(hass).async_get(occupancy_entity)
+    if entry is None or entry.device_id is None:
+        return None
+    for sibling in er.async_entries_for_device(er.async_get(hass), entry.device_id):
+        if (
+            sibling.platform == PRESENCE_PLATFORM
+            and sibling.domain == "sensor"
+            and sibling.translation_key == PRESENCE_ROOM_ACTIVITY_KEY
+            and _usable(sibling)
+        ):
+            return sibling.entity_id
+    return None
+
+
+def suggest_home_presence(hass: HomeAssistant) -> str | None:
+    """The Presence Conductor home-level "anyone home" sensor, if any."""
+    entries = _presence_entries(hass, "binary_sensor", PRESENCE_ANYONE_HOME_KEY)
+    entries.sort(key=lambda entry: entry.entity_id)
+    return entries[0].entity_id if entries else None
 
 
 def suggest_tvs(hass: HomeAssistant, area_id: str | None) -> list[str]:

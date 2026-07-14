@@ -17,6 +17,7 @@
         "data": {
           "name": "Zone name",
           "room": "Acoustic room",
+          "presence_entity": "Presence Conductor room",
           "occupancy": "Occupancy sensors",
           "tvs": "TV media players",
           "hold_seconds": "Hold time",
@@ -27,7 +28,8 @@
         "data_description": {
           "name": "Display name for the zone. It also becomes the zone's internal ID, so it must be unique.",
           "room": "Zones that share air get the same room name (for example, an open living room and its dining nook both say \"stue\"). Speakers in one room are scaled by 1/√N so the perceived total loudness stays constant. Same text = same room.",
-          "occupancy": "Motion, occupancy or presence sensors. While any of them is on, this zone is audible.",
+          "presence_entity": "A Presence Conductor room-occupancy sensor — the preferred presence source. Beyond on/off it reports activity (passing/active/settled), which scales the hold time: a walk-through releases quickly, a settled room lingers. Auto-suggested when a room matches this speaker's area.",
+          "occupancy": "Plain motion, occupancy or presence sensors — the fallback when no Presence Conductor room exists (extra sensors can be combined with one). While any input is on, this zone is audible.",
           "tvs": "TV players attached to this zone. While a TV plays, the zone counts as occupied and its room scale is forced to 1.0 so a TV remote gets a 1:1 volume mapping.",
           "hold_seconds": "How long occupancy may be absent before the zone fades out. Raise it for rooms you briefly step out of, like a kitchen.",
           "fallback": "The fallback zone stays audible when no other zone is active, so the music never dies while someone is home. At most one zone can be the fallback.",
@@ -49,6 +51,16 @@
           "release_fade": "Seconds to fade back to normal volume after the last duck input clears."
         }
       },
+      "home": {
+        "title": "Home presence",
+        "description": "Optionally gate the fallback zone on home-level presence. While this sensor reports that nobody is home, the fallback zone stays silent instead of playing to an empty home — and fades back in when someone returns. Leave empty to keep the fallback always on.",
+        "data": {
+          "home_presence_entity": "Anyone-home sensor"
+        },
+        "data_description": {
+          "home_presence_entity": "A home-level presence sensor, e.g. Presence Conductor's \"Anyone home\". If it becomes unavailable, the conductor fails safe and behaves as if someone is home."
+        }
+      },
       "tunables": {
         "title": "Tunables",
         "description": "Fine-tuning for fades and synchronization. The defaults mirror the behavior of a battle-tested installation; you can revisit them anytime via the integration's Configure button.",
@@ -62,7 +74,9 @@
           "transition_suppression": "Transition suppression",
           "group_repair_delay": "Group repair delay",
           "startup_tolerance": "Startup tolerance",
-          "night_volume_cap": "Night volume cap"
+          "night_volume_cap": "Night volume cap",
+          "hold_passing_scale": "Passing hold scale",
+          "hold_settled_scale": "Settled hold scale"
         },
         "data_description": {
           "fade_in": "Seconds to fade a zone in when it becomes active.",
@@ -74,7 +88,9 @@
           "transition_suppression": "Ignore external volume reports within this window after any zone, duck or TV transition — the fleet is in motion.",
           "group_repair_delay": "How long the speaker group topology may deviate before it is repaired.",
           "startup_tolerance": "Volume divergence below which startup adopts the current volumes as-is instead of converging them.",
-          "night_volume_cap": "Absolute volume ceiling for every speaker while night mode is active. Duck inputs with a lower cap still win."
+          "night_volume_cap": "Absolute volume ceiling for every speaker while night mode is active. Duck inputs with a lower cap still win.",
+          "hold_passing_scale": "Hold-time multiplier when a zone's visit never rose above passing (needs a Presence Conductor room). 0.3 means a walk-through fades out after 30% of the normal hold time.",
+          "hold_settled_scale": "Hold-time multiplier after someone was settled in the zone (needs a Presence Conductor room). 4.0 means stepping out of a settled room keeps the music 4× the normal hold time."
         }
       }
     },
@@ -95,8 +111,9 @@
         "title": "Sonos Conductor options",
         "description": "Pick a section to edit. Changes apply when the section is saved; adding or removing speakers requires re-adding the integration.",
         "menu_options": {
-          "zones": "Zones — occupancy, rooms, hold times, trim",
+          "zones": "Zones — presence, rooms, hold times, trim",
           "ducks": "Duck inputs — door/window volume capping",
+          "home": "Home presence — silence the fallback when nobody is home",
           "tunables": "Tunables — fades, thresholds, timings",
           "media": "Media — sources exposed to HomeKit"
         }
@@ -106,6 +123,7 @@
         "description": "Adjust this zone's inputs and behavior. Current settings are prefilled; discovery only fills the gaps.",
         "data": {
           "room": "Acoustic room",
+          "presence_entity": "Presence Conductor room",
           "occupancy": "Occupancy sensors",
           "tvs": "TV media players",
           "hold_seconds": "Hold time",
@@ -115,7 +133,8 @@
         },
         "data_description": {
           "room": "Zones that share air get the same room name. Speakers in one room are scaled by 1/√N so the perceived total loudness stays constant. Same text = same room.",
-          "occupancy": "Motion, occupancy or presence sensors. While any of them is on, this zone is audible.",
+          "presence_entity": "A Presence Conductor room-occupancy sensor — the preferred presence source. Its activity (passing/active/settled) scales the hold time.",
+          "occupancy": "Plain motion, occupancy or presence sensors — the fallback when no Presence Conductor room exists (extra sensors can be combined with one). While any input is on, this zone is audible.",
           "tvs": "TV players attached to this zone. While a TV plays, the zone counts as occupied and its room scale is forced to 1.0 so a TV remote gets a 1:1 volume mapping.",
           "hold_seconds": "How long occupancy may be absent before the zone fades out.",
           "fallback": "The fallback zone stays audible when no other zone is active. At most one zone can be the fallback.",
@@ -137,6 +156,16 @@
           "release_fade": "Seconds to fade back to normal volume after the last duck input clears."
         }
       },
+      "home": {
+        "title": "Home presence",
+        "description": "Optionally gate the fallback zone on home-level presence. While this sensor reports that nobody is home, the fallback zone stays silent instead of playing to an empty home — and fades back in when someone returns. Leave empty to keep the fallback always on.",
+        "data": {
+          "home_presence_entity": "Anyone-home sensor"
+        },
+        "data_description": {
+          "home_presence_entity": "A home-level presence sensor, e.g. Presence Conductor's \"Anyone home\". If it becomes unavailable, the conductor fails safe and behaves as if someone is home."
+        }
+      },
       "tunables": {
         "title": "Tunables",
         "description": "Fine-tuning for fades and synchronization. Current values are prefilled.",
@@ -150,7 +179,9 @@
           "transition_suppression": "Transition suppression",
           "group_repair_delay": "Group repair delay",
           "startup_tolerance": "Startup tolerance",
-          "night_volume_cap": "Night volume cap"
+          "night_volume_cap": "Night volume cap",
+          "hold_passing_scale": "Passing hold scale",
+          "hold_settled_scale": "Settled hold scale"
         },
         "data_description": {
           "fade_in": "Seconds to fade a zone in when it becomes active.",
@@ -162,7 +193,9 @@
           "transition_suppression": "Ignore external volume reports within this window after any zone, duck or TV transition — the fleet is in motion.",
           "group_repair_delay": "How long the speaker group topology may deviate before it is repaired.",
           "startup_tolerance": "Volume divergence below which startup adopts the current volumes as-is instead of converging them.",
-          "night_volume_cap": "Absolute volume ceiling for every speaker while night mode is active. Duck inputs with a lower cap still win."
+          "night_volume_cap": "Absolute volume ceiling for every speaker while night mode is active. Duck inputs with a lower cap still win.",
+          "hold_passing_scale": "Hold-time multiplier when a zone's visit never rose above passing (needs a Presence Conductor room). 0.3 means a walk-through fades out after 30% of the normal hold time.",
+          "hold_settled_scale": "Hold-time multiplier after someone was settled in the zone (needs a Presence Conductor room). 4.0 means stepping out of a settled room keeps the music 4× the normal hold time."
         }
       },
       "media": {

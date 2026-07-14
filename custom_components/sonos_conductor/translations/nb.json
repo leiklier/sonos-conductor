@@ -17,6 +17,7 @@
         "data": {
           "name": "Sonenavn",
           "room": "Akustisk rom",
+          "presence_entity": "Presence Conductor-rom",
           "occupancy": "Tilstedeværelsessensorer",
           "tvs": "TV-mediespillere",
           "hold_seconds": "Holdetid",
@@ -27,7 +28,8 @@
         "data_description": {
           "name": "Visningsnavn for sonen. Det blir også sonens interne ID, så det må være unikt.",
           "room": "Soner som deler luft, får samme romnavn (for eksempel heter både en åpen stue og spisekroken \"stue\"). Høyttalere i samme rom skaleres med 1/√N slik at den opplevde samlede lydstyrken holder seg konstant. Samme tekst = samme rom.",
-          "occupancy": "Bevegelses- eller tilstedeværelsessensorer. Så lenge minst én av dem er på, er denne sonen hørbar.",
+          "presence_entity": "En romsensor fra Presence Conductor — den foretrukne tilstedeværelseskilden. Utover på/av rapporterer den aktivitet (forbipasserende/aktiv/til ro), som skalerer holdetiden: en gjennomgang tones raskt ut, et rom man har slått seg til ro i henger lenger igjen. Foreslås automatisk når et rom passer høyttalerens område.",
+          "occupancy": "Vanlige bevegelses- eller tilstedeværelsessensorer — reserven når det ikke finnes noe Presence Conductor-rom (ekstra sensorer kan kombineres med ett). Så lenge minst én inngang er på, er denne sonen hørbar.",
           "tvs": "TV-spillere knyttet til denne sonen. Mens en TV spiller, regnes sonen som i bruk, og romskalaen låses til 1,0 slik at TV-fjernkontrollen styrer volumet 1:1.",
           "hold_seconds": "Hvor lenge det kan mangle tilstedeværelse før sonen tones ut. Øk verdien for rom du bare forlater en kort stund, som et kjøkken.",
           "fallback": "Reservesonen holder seg hørbar når ingen andre soner er aktive, slik at musikken aldri stilner mens noen er hjemme. Høyst én sone kan være reservesone.",
@@ -49,6 +51,16 @@
           "release_fade": "Sekunder brukt på å tone tilbake til normalt volum etter at den siste volumsenkingen er over."
         }
       },
+      "home": {
+        "title": "Tilstedeværelse hjemme",
+        "description": "Lås eventuelt reservesonen til tilstedeværelse på husnivå. Mens denne sensoren melder at ingen er hjemme, holder reservesonen seg stille i stedet for å spille for et tomt hjem — og tones inn igjen når noen kommer hjem. La stå tomt for å holde reservesonen alltid på.",
+        "data": {
+          "home_presence_entity": "Noen hjemme-sensor"
+        },
+        "data_description": {
+          "home_presence_entity": "En tilstedeværelsessensor på husnivå, f.eks. \"Anyone home\" fra Presence Conductor. Blir den utilgjengelig, feiler dirigenten trygt og oppfører seg som om noen er hjemme."
+        }
+      },
       "tunables": {
         "title": "Finjustering",
         "description": "Finjustering av toninger og synkronisering. Standardverdiene speiler en gjennomprøvd installasjon; du kan endre dem når som helst via Konfigurer-knappen på integrasjonen.",
@@ -62,7 +74,9 @@
           "transition_suppression": "Undertrykkelse etter overganger",
           "group_repair_delay": "Forsinkelse for gruppereparasjon",
           "startup_tolerance": "Oppstartstoleranse",
-          "night_volume_cap": "Maks volum i nattmodus"
+          "night_volume_cap": "Maks volum i nattmodus",
+          "hold_passing_scale": "Holdetidsskala for gjennomgang",
+          "hold_settled_scale": "Holdetidsskala etter ro"
         },
         "data_description": {
           "fade_in": "Sekunder brukt på å tone inn en sone når den blir aktiv.",
@@ -74,7 +88,9 @@
           "transition_suppression": "Ignorer eksterne volumrapporter i dette tidsvinduet etter en sone-, volumsenkings- eller TV-overgang — hele anlegget er i bevegelse.",
           "group_repair_delay": "Hvor lenge høyttalergruppens topologi kan avvike før den repareres.",
           "startup_tolerance": "Volumavvik under denne grensen gjør at oppstarten beholder gjeldende volumer som de er, i stedet for å jevne dem ut.",
-          "night_volume_cap": "Absolutt volumtak for alle høyttalere mens nattmodus er aktiv. Innganger for volumsenking med lavere grense gjelder fortsatt."
+          "night_volume_cap": "Absolutt volumtak for alle høyttalere mens nattmodus er aktiv. Innganger for volumsenking med lavere grense gjelder fortsatt.",
+          "hold_passing_scale": "Holdetidsmultiplikator når et besøk i sonen aldri ble mer enn en gjennomgang (krever et Presence Conductor-rom). 0,3 betyr at en gjennomgang tones ut etter 30 % av normal holdetid.",
+          "hold_settled_scale": "Holdetidsmultiplikator etter at noen hadde slått seg til ro i sonen (krever et Presence Conductor-rom). 4,0 betyr at musikken henger igjen 4× normal holdetid når man går ut av et slikt rom."
         }
       }
     },
@@ -97,6 +113,7 @@
         "menu_options": {
           "zones": "Soner — tilstedeværelse, rom, holdetider, justering",
           "ducks": "Volumsenking — dører/vinduer begrenser volumet",
+          "home": "Tilstedeværelse hjemme — still reservesonen når ingen er hjemme",
           "tunables": "Finjustering — toninger, terskler, tidsstyring",
           "media": "Media — kilder som eksponeres til HomeKit"
         }
@@ -106,6 +123,7 @@
         "description": "Juster inngangene og oppførselen til denne sonen. Gjeldende innstillinger er forhåndsutfylt; automatisk oppdaging fyller bare inn det som mangler.",
         "data": {
           "room": "Akustisk rom",
+          "presence_entity": "Presence Conductor-rom",
           "occupancy": "Tilstedeværelsessensorer",
           "tvs": "TV-mediespillere",
           "hold_seconds": "Holdetid",
@@ -115,7 +133,8 @@
         },
         "data_description": {
           "room": "Soner som deler luft, får samme romnavn. Høyttalere i samme rom skaleres med 1/√N slik at den opplevde samlede lydstyrken holder seg konstant. Samme tekst = samme rom.",
-          "occupancy": "Bevegelses- eller tilstedeværelsessensorer. Så lenge minst én av dem er på, er denne sonen hørbar.",
+          "presence_entity": "En romsensor fra Presence Conductor — den foretrukne tilstedeværelseskilden. Aktiviteten dens (forbipasserende/aktiv/til ro) skalerer holdetiden.",
+          "occupancy": "Vanlige bevegelses- eller tilstedeværelsessensorer — reserven når det ikke finnes noe Presence Conductor-rom (ekstra sensorer kan kombineres med ett). Så lenge minst én inngang er på, er denne sonen hørbar.",
           "tvs": "TV-spillere knyttet til denne sonen. Mens en TV spiller, regnes sonen som i bruk, og romskalaen låses til 1,0 slik at TV-fjernkontrollen styrer volumet 1:1.",
           "hold_seconds": "Hvor lenge det kan mangle tilstedeværelse før sonen tones ut.",
           "fallback": "Reservesonen holder seg hørbar når ingen andre soner er aktive. Høyst én sone kan være reservesone.",
@@ -137,6 +156,16 @@
           "release_fade": "Sekunder brukt på å tone tilbake til normalt volum etter at den siste volumsenkingen er over."
         }
       },
+      "home": {
+        "title": "Tilstedeværelse hjemme",
+        "description": "Lås eventuelt reservesonen til tilstedeværelse på husnivå. Mens denne sensoren melder at ingen er hjemme, holder reservesonen seg stille i stedet for å spille for et tomt hjem — og tones inn igjen når noen kommer hjem. La stå tomt for å holde reservesonen alltid på.",
+        "data": {
+          "home_presence_entity": "Noen hjemme-sensor"
+        },
+        "data_description": {
+          "home_presence_entity": "En tilstedeværelsessensor på husnivå, f.eks. \"Anyone home\" fra Presence Conductor. Blir den utilgjengelig, feiler dirigenten trygt og oppfører seg som om noen er hjemme."
+        }
+      },
       "tunables": {
         "title": "Finjustering",
         "description": "Finjustering av toninger og synkronisering. Gjeldende verdier er forhåndsutfylt.",
@@ -150,7 +179,9 @@
           "transition_suppression": "Undertrykkelse etter overganger",
           "group_repair_delay": "Forsinkelse for gruppereparasjon",
           "startup_tolerance": "Oppstartstoleranse",
-          "night_volume_cap": "Maks volum i nattmodus"
+          "night_volume_cap": "Maks volum i nattmodus",
+          "hold_passing_scale": "Holdetidsskala for gjennomgang",
+          "hold_settled_scale": "Holdetidsskala etter ro"
         },
         "data_description": {
           "fade_in": "Sekunder brukt på å tone inn en sone når den blir aktiv.",
@@ -162,7 +193,9 @@
           "transition_suppression": "Ignorer eksterne volumrapporter i dette tidsvinduet etter en sone-, volumsenkings- eller TV-overgang — hele anlegget er i bevegelse.",
           "group_repair_delay": "Hvor lenge høyttalergruppens topologi kan avvike før den repareres.",
           "startup_tolerance": "Volumavvik under denne grensen gjør at oppstarten beholder gjeldende volumer som de er, i stedet for å jevne dem ut.",
-          "night_volume_cap": "Absolutt volumtak for alle høyttalere mens nattmodus er aktiv. Innganger for volumsenking med lavere grense gjelder fortsatt."
+          "night_volume_cap": "Absolutt volumtak for alle høyttalere mens nattmodus er aktiv. Innganger for volumsenking med lavere grense gjelder fortsatt.",
+          "hold_passing_scale": "Holdetidsmultiplikator når et besøk i sonen aldri ble mer enn en gjennomgang (krever et Presence Conductor-rom). 0,3 betyr at en gjennomgang tones ut etter 30 % av normal holdetid.",
+          "hold_settled_scale": "Holdetidsmultiplikator etter at noen hadde slått seg til ro i sonen (krever et Presence Conductor-rom). 4,0 betyr at musikken henger igjen 4× normal holdetid når man går ut av et slikt rom."
         }
       },
       "media": {

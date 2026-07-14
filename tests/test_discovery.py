@@ -29,6 +29,11 @@ ERA = "media_player.spisebord_sonos"
 ARC = "media_player.sofakrok_sonos"
 MOVE_DOCK = "binary_sensor.kjokken_sonos_move_lader"
 
+PC_KJOKKEN_OCC = "binary_sensor.kjokken_presence_room_occupancy"
+PC_KJOKKEN_ACT = "sensor.kjokken_presence_room_activity"
+PC_SPISEBORD_OCC = "binary_sensor.spisebord_presence_room_occupancy"
+PC_HOME = "binary_sensor.presence_conductor_anyone_home"
+
 
 async def build_installation(hass: HomeAssistant) -> dict[str, str]:
     """Stage registries + states like the real installation. Returns area ids."""
@@ -178,6 +183,87 @@ async def build_installation(hass: HomeAssistant) -> dict[str, str]:
     return areas
 
 
+async def add_presence_conductor(hass: HomeAssistant, areas: dict[str, str]) -> None:
+    """Stage a Presence Conductor install: hub + room devices + entities.
+
+    Mirrors the real integration's registry footprint: platform
+    ``presence_conductor``, per-room devices (suggested_area = room name),
+    translation keys ``room_occupancy`` / ``room_activity`` /
+    ``anyone_home``. The spisebord room device deliberately has no area so
+    the slug-fallback path is exercised.
+    """
+    dev_reg = dr.async_get(hass)
+    ent_reg = er.async_get(hass)
+    entry = MockConfigEntry(domain="presence_conductor")
+    entry.add_to_hass(hass)
+
+    def add(
+        domain: str,
+        object_id: str,
+        translation_key: str,
+        *,
+        device: dr.DeviceEntry,
+        device_class: str | None = None,
+    ) -> er.RegistryEntry:
+        return ent_reg.async_get_or_create(
+            domain,
+            "presence_conductor",
+            f"pc_{object_id}",
+            suggested_object_id=object_id,
+            device_id=device.id,
+            original_device_class=device_class,
+            translation_key=translation_key,
+        )
+
+    hub = dev_reg.async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={("presence_conductor", "hub")},
+        name="Presence Conductor",
+    )
+    add(
+        "binary_sensor",
+        "presence_conductor_anyone_home",
+        "anyone_home",
+        device=hub,
+        device_class="presence",
+    )
+
+    kjokken = dev_reg.async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={("presence_conductor", "room_kjokken")},
+        name="Kjøkken presence",
+    )
+    dev_reg.async_update_device(kjokken.id, area_id=areas["Kjøkken"])
+    add(
+        "binary_sensor",
+        "kjokken_presence_room_occupancy",
+        "room_occupancy",
+        device=kjokken,
+        device_class="occupancy",
+    )
+    add(
+        "binary_sensor",
+        "kjokken_presence_room_motion",
+        "room_motion",
+        device=kjokken,
+        device_class="motion",
+    )
+    add("sensor", "kjokken_presence_room_activity", "room_activity", device=kjokken)
+
+    spisebord = dev_reg.async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={("presence_conductor", "room_spisebord")},
+        name="Spisebord presence",
+    )
+    add(
+        "binary_sensor",
+        "spisebord_presence_room_occupancy",
+        "room_occupancy",
+        device=spisebord,
+        device_class="occupancy",
+    )
+
+
 async def test_discover_speakers(hass: HomeAssistant) -> None:
     """Sonos players only, sorted, with names, areas and dock sensors."""
     areas = await build_installation(hass)
@@ -266,6 +352,49 @@ async def test_suggest_duck_inputs(hass: HomeAssistant) -> None:
         "binary_sensor.inngangsdor",
         "binary_sensor.kontor_vindu",
     ]
+
+
+async def test_suggest_presence_by_area(hass: HomeAssistant) -> None:
+    """A Presence Conductor room device in the area wins; motion/activity
+    siblings are never suggested as the presence entity."""
+    areas = await build_installation(hass)
+    await add_presence_conductor(hass, areas)
+
+    assert discovery.suggest_presence(hass, areas["Kjøkken"], "Kjøkken") == PC_KJOKKEN_OCC
+    assert discovery.suggest_presence(hass, areas["Sofakrok"], "Sofakrok") is None
+
+
+async def test_suggest_presence_slug_fallback(hass: HomeAssistant) -> None:
+    """An area-less room device is matched by the area-name slug."""
+    areas = await build_installation(hass)
+    await add_presence_conductor(hass, areas)
+
+    assert discovery.suggest_presence(hass, areas["Spisebord"], "Spisebord") == PC_SPISEBORD_OCC
+    assert discovery.suggest_presence(hass, None, "Spisebord") == PC_SPISEBORD_OCC
+
+
+async def test_suggest_presence_without_presence_conductor(hass: HomeAssistant) -> None:
+    areas = await build_installation(hass)
+    assert discovery.suggest_presence(hass, areas["Kjøkken"], "Kjøkken") is None
+
+
+async def test_presence_activity_sensor(hass: HomeAssistant) -> None:
+    """The activity sensor is the room-device sibling; absent = None."""
+    areas = await build_installation(hass)
+    await add_presence_conductor(hass, areas)
+
+    assert discovery.presence_activity_sensor(hass, PC_KJOKKEN_OCC) == PC_KJOKKEN_ACT
+    # The spisebord room device has no activity sensor staged.
+    assert discovery.presence_activity_sensor(hass, PC_SPISEBORD_OCC) is None
+    # Unknown / registry-less entity: no crash, no sibling.
+    assert discovery.presence_activity_sensor(hass, "binary_sensor.nonexistent") is None
+
+
+async def test_suggest_home_presence(hass: HomeAssistant) -> None:
+    areas = await build_installation(hass)
+    assert discovery.suggest_home_presence(hass) is None
+    await add_presence_conductor(hass, areas)
+    assert discovery.suggest_home_presence(hass) == PC_HOME
 
 
 async def test_suggest_duck_inputs_from_states(hass: HomeAssistant) -> None:

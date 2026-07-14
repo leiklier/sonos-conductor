@@ -72,8 +72,10 @@ from homeassistant.helpers.dispatcher import async_dispatcher_connect, async_dis
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.event import async_call_later, async_track_state_change_event
 
+from . import discovery
 from .const import (
     CONF_DUCK_INPUTS,
+    CONF_HOME_PRESENCE,
     CONF_PRIMARY_SPEAKER,
     CONF_SPEAKERS,
     CONF_TUNABLES,
@@ -82,12 +84,14 @@ from .const import (
 )
 from .core.effects import CancelTimer, Effect, JoinGroup, RampVolume, SetSpeakerMute, StartTimer
 from .core.events import (
+    ActivityChanged,
     DockChanged,
     DuckChanged,
     Event,
     ExternalMute,
     ExternalVolume,
     GroupMembersReported,
+    HomePresenceChanged,
     OccupancyChanged,
     PlaybackChanged,
     TimerFired,
@@ -98,6 +102,7 @@ from .core.model import (
     DuckInputConfig,
     EngineState,
     InitialSnapshot,
+    PresenceActivity,
     SpeakerConfig,
     Tunables,
     ZoneConfig,
@@ -190,6 +195,39 @@ def _is_tv_playing(hass: HomeAssistant, entity_id: str) -> bool:
     return state is not None and state.state in TV_PLAYING_STATES
 
 
+def _activity_of(hass: HomeAssistant, entity_id: str) -> PresenceActivity | None:
+    """Map a Presence Conductor activity sensor state onto the core enum.
+
+    Unavailable/unknown (the estimator is blind) and unexpected states map
+    to ``None`` — "no information", never "empty".
+    """
+    state = hass.states.get(entity_id)
+    if state is None or state.state in UNAVAILABLE_STATES:
+        return None
+    try:
+        return PresenceActivity(state.state)
+    except ValueError:
+        return None
+
+
+def _tri_state(hass: HomeAssistant, entity_id: str) -> bool | None:
+    """on/off/None of a binary sensor; None = unavailable (blind ≠ absent)."""
+    state = hass.states.get(entity_id)
+    if state is None or state.state in UNAVAILABLE_STATES:
+        return None
+    return state.state == STATE_ON
+
+
+def _zone_occupancy_sensors(zone: Mapping[str, Any]) -> tuple[str, ...]:
+    """All binary inputs whose OR is the zone's occupancy: the Presence
+    Conductor room sensor (if configured) plus any plain sensors."""
+    sensors = tuple(zone.get("occupancy") or ())
+    presence = zone.get("presence_entity")
+    if presence and presence not in sensors:
+        sensors = (presence, *sensors)
+    return sensors
+
+
 def _is_docked(hass: HomeAssistant, entity_id: str) -> bool:
     """Dock sensors are battery-charging sensors: on == charging == docked.
 
@@ -205,10 +243,15 @@ def build_initial_snapshot(hass: HomeAssistant, options: Mapping[str, Any]) -> I
     """Snapshot the current world from ``hass.states`` to seed the engine."""
     occupancy: dict[str, bool] = {}
     tv_playing: dict[str, bool] = {}
+    activity: dict[str, PresenceActivity | None] = {}
     for zone in options.get(CONF_ZONES) or []:
         zone_id = zone["zone_id"]
-        occupancy[zone_id] = any(_is_on(hass, e) for e in zone.get("occupancy") or [])
+        occupancy[zone_id] = any(_is_on(hass, e) for e in _zone_occupancy_sensors(zone))
         tv_playing[zone_id] = any(_is_tv_playing(hass, e) for e in zone.get("tvs") or [])
+        if presence := zone.get("presence_entity"):
+            activity_entity = discovery.presence_activity_sensor(hass, presence)
+            if activity_entity:
+                activity[zone_id] = _activity_of(hass, activity_entity)
 
     docked: dict[str, bool] = {}
     volumes: dict[str, float | None] = {}
@@ -234,6 +277,7 @@ def build_initial_snapshot(hass: HomeAssistant, options: Mapping[str, Any]) -> I
     duck_active = {
         d["entity_id"]: _is_on(hass, d["entity_id"]) for d in options.get(CONF_DUCK_INPUTS) or []
     }
+    home_presence = options.get(CONF_HOME_PRESENCE)
     return InitialSnapshot(
         occupancy=occupancy,
         tv_playing=tv_playing,
@@ -243,6 +287,8 @@ def build_initial_snapshot(hass: HomeAssistant, options: Mapping[str, Any]) -> I
         playing=playing,
         group_members=group_members,
         duck_active=duck_active,
+        activity=activity,
+        anyone_home=_tri_state(hass, home_presence) if home_presence else None,
         master=options.get(CONF_LAST_MASTER),
     )
 
@@ -323,9 +369,11 @@ class SonosConductorController:
         self._tvs_by_zone: dict[str, tuple[str, ...]] = {}
         self._zones_by_occ_sensor: dict[str, list[str]] = {}
         self._zones_by_tv: dict[str, list[str]] = {}
+        self._activity_by_zone: dict[str, str] = {}
+        self._zones_by_activity: dict[str, list[str]] = {}
         for zone in options.get(CONF_ZONES) or []:
             zone_id = zone["zone_id"]
-            sensors = tuple(zone.get("occupancy") or ())
+            sensors = _zone_occupancy_sensors(zone)
             tvs = tuple(zone.get("tvs") or ())
             self._occ_sensors_by_zone[zone_id] = sensors
             self._tvs_by_zone[zone_id] = tvs
@@ -333,6 +381,14 @@ class SonosConductorController:
                 self._zones_by_occ_sensor.setdefault(sensor, []).append(zone_id)
             for tv in tvs:
                 self._zones_by_tv.setdefault(tv, []).append(zone_id)
+            if presence := zone.get("presence_entity"):
+                # The activity sensor lives on the same Presence Conductor
+                # room device; resolved from the registry so it self-heals.
+                activity_entity = discovery.presence_activity_sensor(hass, presence)
+                if activity_entity:
+                    self._activity_by_zone[zone_id] = activity_entity
+                    self._zones_by_activity.setdefault(activity_entity, []).append(zone_id)
+        self._home_presence_entity: str | None = options.get(CONF_HOME_PRESENCE) or None
         self._speaker_by_dock: dict[str, str] = {
             s["dock_sensor"]: s["entity_id"]
             for s in options.get(CONF_SPEAKERS) or []
@@ -347,6 +403,8 @@ class SonosConductorController:
         self._tv_agg: dict[str, bool] = dict(snapshot.tv_playing)
         self._dock_agg: dict[str, bool] = dict(snapshot.docked)
         self._duck_agg: dict[str, bool] = dict(snapshot.duck_active)
+        self._activity_agg: dict[str, PresenceActivity | None] = dict(snapshot.activity)
+        self._home_agg: bool | None = snapshot.anyone_home
 
         # Last observed speaker attributes (change detection + availability).
         self._speaker_views: dict[str, _SpeakerView] = {}
@@ -472,6 +530,18 @@ class SonosConductorController:
             self._unsubs.append(
                 async_track_state_change_event(self.hass, self._duck_entities, self._on_duck_event)
             )
+        if self._zones_by_activity:
+            self._unsubs.append(
+                async_track_state_change_event(
+                    self.hass, sorted(self._zones_by_activity), self._on_activity_event
+                )
+            )
+        if self._home_presence_entity:
+            self._unsubs.append(
+                async_track_state_change_event(
+                    self.hass, [self._home_presence_entity], self._on_home_presence_event
+                )
+            )
 
     @callback
     def _on_speaker_event(self, event: HAEvent[EventStateChangedData]) -> None:
@@ -576,6 +646,22 @@ class SonosConductorController:
         if docked != self._dock_agg.get(speaker_id):
             self._dock_agg[speaker_id] = docked
             self.submit(DockChanged(speaker_id, docked))
+
+    @callback
+    def _on_activity_event(self, event: HAEvent[EventStateChangedData]) -> None:
+        entity_id = event.data["entity_id"]
+        activity = _activity_of(self.hass, entity_id)
+        for zone_id in self._zones_by_activity.get(entity_id, ()):
+            if activity != self._activity_agg.get(zone_id):
+                self._activity_agg[zone_id] = activity
+                self.submit(ActivityChanged(zone_id, activity))
+
+    @callback
+    def _on_home_presence_event(self, event: HAEvent[EventStateChangedData]) -> None:
+        present = _tri_state(self.hass, event.data["entity_id"])
+        if present != self._home_agg:
+            self._home_agg = present
+            self.submit(HomePresenceChanged(present))
 
     @callback
     def _on_duck_event(self, event: HAEvent[EventStateChangedData]) -> None:

@@ -13,7 +13,16 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.sonos_conductor.const import DOMAIN
 from custom_components.sonos_conductor.core.model import Tunables
-from tests.test_discovery import ARC, ERA, MOVE, MOVE_DOCK, build_installation
+from tests.test_discovery import (
+    ARC,
+    ERA,
+    MOVE,
+    MOVE_DOCK,
+    PC_HOME,
+    PC_KJOKKEN_OCC,
+    add_presence_conductor,
+    build_installation,
+)
 
 TUNABLE_DEFAULTS = {f.name: f.default for f in dataclasses.fields(Tunables)}
 
@@ -180,6 +189,12 @@ async def test_full_happy_path(hass: HomeAssistant) -> None:
         {"duck_entities": [DOOR], "duck_volume": 0.05, "release_fade": 2.0},
     )
 
+    # No Presence Conductor installed: no home-presence suggestion.
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "home"
+    assert _suggested(result)["home_presence_entity"] is None
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
+
     assert result["type"] is FlowResultType.FORM
     assert result["step_id"] == "tunables"
     result = await hass.config_entries.flow.async_configure(
@@ -206,6 +221,7 @@ async def test_full_happy_path(hass: HomeAssistant) -> None:
                 "name": "Kjøkken",
                 "speaker": MOVE,
                 "room": "kjokken",
+                "presence_entity": None,
                 "occupancy": KJOKKEN_OCCUPANCY,
                 "tvs": [],
                 "hold_seconds": 60.0,
@@ -216,6 +232,7 @@ async def test_full_happy_path(hass: HomeAssistant) -> None:
                 "name": "Sofakrok",
                 "speaker": ARC,
                 "room": "stue",
+                "presence_entity": None,
                 "occupancy": ["binary_sensor.sofakrok_occupancy"],
                 "tvs": SOFAKROK_TVS,
                 "hold_seconds": 15.0,
@@ -226,6 +243,7 @@ async def test_full_happy_path(hass: HomeAssistant) -> None:
                 "name": "Spisebord",
                 "speaker": ERA,
                 "room": "stue",
+                "presence_entity": None,
                 "occupancy": ["binary_sensor.spisebord_occupancy"],
                 "tvs": [],
                 "hold_seconds": 15.0,
@@ -242,8 +260,103 @@ async def test_full_happy_path(hass: HomeAssistant) -> None:
             }
         ],
         "primary_speaker": ARC,  # the fallback zone's speaker
+        "home_presence_entity": None,
         "tunables": TUNABLE_DEFAULTS,
     }
+
+
+async def test_presence_conductor_prioritized_in_setup(hass: HomeAssistant) -> None:
+    """With Presence Conductor installed, its room is the suggested presence
+    source, plain occupancy suggestions are suppressed, and the home step
+    offers the anyone-home sensor."""
+    areas = await build_installation(hass)
+    await add_presence_conductor(hass, areas)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {"speakers": [MOVE]})
+
+    assert result["step_id"] == "zone"
+    suggested = _suggested(result)
+    assert suggested["presence_entity"] == PC_KJOKKEN_OCC
+    assert suggested["occupancy"] == []
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            "name": "Kjøkken",
+            "room": "kjokken",
+            "presence_entity": PC_KJOKKEN_OCC,
+            "occupancy": [],
+            "tvs": [],
+            "hold_seconds": 60,
+            "fallback": True,
+            "trim": 1.2,
+            "dock_sensor": MOVE_DOCK,
+        },
+    )
+
+    assert result["step_id"] == "ducks"
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"duck_entities": [], "duck_volume": 0.05, "release_fade": 2.0}
+    )
+
+    assert result["step_id"] == "home"
+    assert _suggested(result)["home_presence_entity"] == PC_HOME
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"home_presence_entity": PC_HOME}
+    )
+
+    assert result["step_id"] == "tunables"
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], dict(TUNABLE_DEFAULTS)
+    )
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    options = dict(result["result"].options)
+    assert options["zones"][0]["presence_entity"] == PC_KJOKKEN_OCC
+    assert options["zones"][0]["occupancy"] == []
+    assert options["home_presence_entity"] == PC_HOME
+
+
+async def test_options_home_roundtrip(hass: HomeAssistant) -> None:
+    """The home section stores the entity, suggests discovery for legacy
+    entries, and preserves the stored choice (including clearing it)."""
+    areas = await build_installation(hass)
+    await add_presence_conductor(hass, areas)
+    entry = await _add_entry(hass)  # pre-presence options: no home key
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {"next_step_id": "home"}
+    )
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "home"
+    # Legacy entry (key absent): discovery fills the gap.
+    assert _suggested(result)["home_presence_entity"] == PC_HOME
+
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {"home_presence_entity": PC_HOME}
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert entry.options["home_presence_entity"] == PC_HOME
+    assert entry.options["last_master"] == 0.42
+
+    # Clearing sticks: the stored None wins over discovery.
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {"next_step_id": "home"}
+    )
+    assert _suggested(result)["home_presence_entity"] == PC_HOME  # stored value
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {})
+    assert entry.options["home_presence_entity"] is None
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {"next_step_id": "home"}
+    )
+    assert _suggested(result)["home_presence_entity"] is None
 
 
 async def test_abort_no_speakers_found(hass: HomeAssistant) -> None:
@@ -407,6 +520,10 @@ async def test_options_zones_roundtrip_preserves_last_master(hass: HomeAssistant
 
     expected = _base_options()
     expected["zones"][0]["hold_seconds"] = 45.0
+    # The edit round-trips through the new schema: the (unset) presence
+    # entity is materialized on every zone.
+    for zone in expected["zones"]:
+        zone["presence_entity"] = None
     assert dict(entry.options) == expected
     assert entry.options["last_master"] == 0.42
 
