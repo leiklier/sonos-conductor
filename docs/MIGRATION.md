@@ -119,7 +119,8 @@ targets it.
   *per zone* (music follows you speaker by speaker), or widen it to *per
   room* (any presence in the stue wakes both stue speakers) or *all
   speakers* (the whole house plays while anyone is home — zone presence or
-  the anyone-home sensor; an empty house still goes quiet). It is
+  the anyone-home sensor; an empty house still goes quiet, and an
+  unavailable anyone-home sensor fails safe as "someone is home"). It is
   independent of TV solo — TV solo still silences rooms on top of any
   follow mode.
 - **Group repair**: `switch.sonos_conductor_keep_grouped` → spontaneous

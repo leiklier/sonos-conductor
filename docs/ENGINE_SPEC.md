@@ -117,7 +117,7 @@ presence reaches.
     |---|---|
     | PER_ZONE | `self_present(zone)` (legacy behavior) |
     | PER_ROOM | any zone in `zone.room` has `self_present` |
-    | ALL_SPEAKERS | `anyone_home is True`, or any zone has `self_present` |
+    | ALL_SPEAKERS | `anyone_home is not False`, or any zone has `self_present` |
 
     A STANDALONE zone is never made audible (its speaker left the system),
     but its own `self_present` still counts as a contributor — occupancy is a
@@ -128,17 +128,21 @@ presence reaches.
     PER_ZONE; its room in PER_ROOM; all zones in ALL_SPEAKERS), and in
     ALL_SPEAKERS a `HomePresenceChanged` re-runs them for all zones too.
 
-    ALL_SPEAKERS is **presence-gated**, not "always on": the point of the
-    mode is sound in every zone *while someone is home*. Home-level presence
-    (rule 1.8's input) doubles as presence anywhere — someone home but
-    outside every zone (bedroom, bathroom) keeps the whole house playing.
-    Strictly `anyone_home is True`: `None` (no input configured, estimator
-    blind) never turns the house on — without a home sensor the mode stays
-    zone-driven, and with nobody present the whole house releases through
-    its holds and the ordinary fallback (1.5) / empty-home (1.8) rules
-    apply. Follow mode is orthogonal to TV solo (rule 6.2): solo suppression
-    applies *on top of* whatever effective occupancy makes audible, so a
-    playing TV can still silence rooms even in ALL_SPEAKERS.
+    ALL_SPEAKERS means sound in every zone *while someone is home*, gated
+    by home-level presence. Rule 1.8's input doubles as presence anywhere —
+    someone home but outside every zone (bedroom, bathroom) keeps the whole
+    house playing — and its fail-safe convention carries over: `None` (no
+    input configured, estimator blind) behaves as present, so a blind
+    estimator keeps the house on rather than silencing it. Only a
+    definitive `anyone_home is False` empties the house: every zone
+    releases through its normal hold and the empty-home rule (1.8) keeps
+    the fallback unforced. Consequence: without a home-presence input the
+    mode keeps every zone audible indefinitely — the whole-house analogue
+    of the fallback's "music never dies"; configure an anyone-home sensor
+    to get empty-home silence. Follow mode is orthogonal to TV solo (rule
+    6.2): solo suppression applies *on top of* whatever effective occupancy
+    makes audible, so a playing TV can still silence rooms even in
+    ALL_SPEAKERS.
 
     `SetFollowMode(m)`: if changed, re-derive every zone from current inputs
     and reconcile (`rebalance_fade`). Widening fades newly-woken zones in;

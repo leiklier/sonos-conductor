@@ -101,7 +101,8 @@ def test_per_room_releases_together_then_fallback_returns() -> None:
 
 
 def test_all_speakers_wakes_every_zone() -> None:
-    h = Harness(snapshot=make_snapshot(follow_mode=FollowMode.ALL_SPEAKERS))
+    # anyone_home=False so the wake is driven purely by zone presence.
+    h = Harness(snapshot=make_snapshot(follow_mode=FollowMode.ALL_SPEAKERS, anyone_home=False))
     effects = h.occupy("kjokken")
 
     for zone_id in ("kjokken", "spisebord", "sofakrok"):
@@ -113,23 +114,25 @@ def test_all_speakers_wakes_every_zone() -> None:
     expect_ramp(effects, SOFAKROK, MASTER * 1.0 * STUE_2)
 
 
-def test_all_speakers_is_presence_gated_not_always_on() -> None:
-    """An empty house is not "all speakers on": only the fallback plays."""
-    h = Harness(snapshot=make_snapshot(follow_mode=FollowMode.ALL_SPEAKERS))
-    assert _phase(h, "sofakrok") is ZonePhase.ACTIVE  # fallback (rule 1.5)
-    assert _phase(h, "spisebord") is ZonePhase.IDLE
-    assert _phase(h, "kjokken") is ZonePhase.IDLE
+def test_all_speakers_no_home_input_keeps_whole_house_on() -> None:
+    """anyone_home=None behaves as present (rule 1.8 fail-safe): with no
+    home input at all, ALL_SPEAKERS keeps every zone audible — the
+    whole-house analogue of the fallback's "music never dies"."""
+    h = Harness(snapshot=make_snapshot(follow_mode=FollowMode.ALL_SPEAKERS))  # anyone_home=None
+    for zone_id in ("kjokken", "spisebord", "sofakrok"):
+        assert _phase(h, zone_id) is ZonePhase.ACTIVE
 
 
 def test_all_speakers_respects_empty_home() -> None:
-    """anyone_home=False suspends fallback forcing even in ALL_SPEAKERS."""
+    """anyone_home=False empties the house even in ALL_SPEAKERS."""
     h = Harness(snapshot=make_snapshot(follow_mode=FollowMode.ALL_SPEAKERS, anyone_home=False))
     for zone_id in ("kjokken", "spisebord", "sofakrok"):
         assert _phase(h, zone_id) is ZonePhase.IDLE
 
 
 def test_all_speakers_whole_house_releases_when_empty() -> None:
-    h = Harness(snapshot=make_snapshot(follow_mode=FollowMode.ALL_SPEAKERS))
+    # anyone_home=False: the only presence is the kitchen zone's own sensor.
+    h = Harness(snapshot=make_snapshot(follow_mode=FollowMode.ALL_SPEAKERS, anyone_home=False))
     h.occupy("kjokken")
     h.vacate("kjokken")
     for zone_id in ("kjokken", "spisebord", "sofakrok"):
@@ -175,18 +178,14 @@ def test_all_speakers_home_arrival_fades_whole_house_in() -> None:
     expect_ramp(effects, SOFAKROK, MASTER * 1.0 * STUE_2)
 
 
-def test_all_speakers_blind_home_sensor_scales_down_to_fallback() -> None:
-    """anyone_home True->None (estimator blind): blind must not keep the
-    house on — it releases through the holds and the fallback carries on
-    (None fails safe as present for rule 1.5)."""
+def test_all_speakers_blind_home_sensor_keeps_house_on() -> None:
+    """anyone_home True->None (estimator blind): blind is not absent — the
+    fail-safe (rule 1.8) keeps the whole house playing, silently."""
     h = Harness(snapshot=make_snapshot(follow_mode=FollowMode.ALL_SPEAKERS, anyone_home=True))
-    h.fire(HomePresenceChanged(None))
+    effects = h.fire(HomePresenceChanged(None))
     for zone_id in ("kjokken", "spisebord", "sofakrok"):
-        assert _phase(h, zone_id) is ZonePhase.RELEASING
-        h.fire_timer(timers.zone_release(zone_id))
-    assert _phase(h, "kjokken") is ZonePhase.IDLE
-    assert _phase(h, "spisebord") is ZonePhase.IDLE
-    assert _phase(h, "sofakrok") is ZonePhase.ACTIVE  # fallback baseline
+        assert _phase(h, zone_id) is ZonePhase.ACTIVE
+    expect_no_volume_effects(effects)
 
 
 # ---------------------------------------------------------------------

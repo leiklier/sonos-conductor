@@ -59,9 +59,10 @@ def effective_occupied(engine: ConductorEngine, zone: ZoneConfig) -> bool:
 
     In ALL_SPEAKERS, home-level presence (rule 1.8) doubles as presence
     anywhere: someone home but outside every zone (bedroom, bathroom) still
-    means "sound in all zones" — that is what the mode is for. Strictly
-    ``True`` only: ``None`` (no input configured, estimator blind) must not
-    turn the whole house on.
+    means "sound in all zones" — that is what the mode is for. ``None``
+    behaves as present (the rule 1.8 fail-safe: a blind estimator, or no
+    input at all, must not silence the house); only a definitive ``False``
+    hands the decision back to the zone sensors.
     """
     mode = engine.state.follow_mode
     if mode is FollowMode.PER_ZONE:
@@ -69,7 +70,7 @@ def effective_occupied(engine: ConductorEngine, zone: ZoneConfig) -> bool:
     if mode is FollowMode.PER_ROOM:
         peers = engine.config.zones_in_room(zone.room_id)
     else:  # ALL_SPEAKERS
-        if engine.state.anyone_home is True:
+        if engine.state.anyone_home is not False:
             return True
         peers = engine.config.zones
     return any(_self_present(engine, z) for z in peers)

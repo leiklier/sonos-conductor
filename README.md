@@ -16,7 +16,8 @@ a testable state machine replacing YAML automation sprawl.
   room plays every speaker sharing that room), or *all speakers* (the whole
   house plays while anyone is home — the anyone-home sensor counts, so being
   in a room without a speaker doesn't scale the house down — and an empty
-  house still goes quiet). It is independent of TV solo, which still silences
+  house still goes quiet; an unavailable anyone-home sensor fails safe as
+  "someone is home"). It is independent of TV solo, which still silences
   rooms on top of any follow mode.
 - **Rich presence via [Presence Conductor](https://github.com/leiklier/presence-conductor)** —
   when installed, its room devices are auto-discovered and preferred over
