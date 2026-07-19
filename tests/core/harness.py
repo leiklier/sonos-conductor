@@ -26,6 +26,7 @@ from custom_components.sonos_conductor.core.events import Event, OccupancyChange
 from custom_components.sonos_conductor.core.model import (
     ConductorConfig,
     DuckInputConfig,
+    FollowMode,
     InitialSnapshot,
     PresenceActivity,
     SpeakerConfig,
@@ -112,6 +113,7 @@ def make_snapshot(
     mute: bool = False,
     enabled: bool = True,
     tv_solo_mode: TvSoloMode = TvSoloMode.OFF,
+    follow_mode: FollowMode = FollowMode.PER_ZONE,
     keep_grouped: bool = True,
     night_mode: bool = False,
 ) -> InitialSnapshot:
@@ -145,6 +147,7 @@ def make_snapshot(
         mute=mute,
         enabled=enabled,
         tv_solo_mode=tv_solo_mode,
+        follow_mode=follow_mode,
         keep_grouped=keep_grouped,
         night_mode=night_mode,
     )
