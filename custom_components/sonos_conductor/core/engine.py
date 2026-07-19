@@ -42,6 +42,7 @@ from .events import (
     OccupancyChanged,
     PlaybackChanged,
     SetEnabled,
+    SetFollowMode,
     SetKeepGrouped,
     SetMaster,
     SetMute,
@@ -94,6 +95,7 @@ class ConductorEngine:
         state.muted = snapshot.mute
         state.enabled = snapshot.enabled
         state.tv_solo_mode = snapshot.tv_solo_mode
+        state.follow_mode = snapshot.follow_mode  # 1.9 seeds like any flag (9.1)
         state.keep_grouped = snapshot.keep_grouped
         state.night_mode = snapshot.night_mode  # 3.3 seeds like any flag (9.1)
         for speaker in self.config.speakers:
@@ -106,25 +108,25 @@ class ConductorEngine:
                 group_members=tuple(snapshot.group_members.get(sid, ())),
             )
         state.anyone_home = snapshot.anyone_home  # 1.8 seeds like any flag (9.1)
+        # Pass 1: seed raw inputs so effective_occupied (1.9) can read every
+        # zone's occupancy/TV before any phase is derived.
         for zone in self.config.zones:
-            occupied = snapshot.occupancy.get(zone.zone_id, False)
-            tv = snapshot.tv_playing.get(zone.zone_id, False)
-            activity = snapshot.activity.get(zone.zone_id)
-            if not state.speakers[zone.speaker_id].docked:
-                phase = ZonePhase.STANDALONE
-            elif occupied or tv:
-                phase = ZonePhase.ACTIVE
-            else:
-                # No hold timers pending at startup: unoccupied = IDLE (9.1).
-                phase = ZonePhase.IDLE
             state.zones[zone.zone_id] = ZoneState(
-                phase=phase,
-                occupied=occupied,
-                tv_playing=tv,
-                activity=activity,
-                # An audible zone starts its episode at the current activity.
-                episode_peak=activity if phase is ZonePhase.ACTIVE else None,
+                phase=ZonePhase.IDLE,
+                occupied=snapshot.occupancy.get(zone.zone_id, False),
+                tv_playing=snapshot.tv_playing.get(zone.zone_id, False),
+                activity=snapshot.activity.get(zone.zone_id),
             )
+        # Pass 2: derive each phase from the (now complete) world model.
+        for zone in self.config.zones:
+            zone_state = state.zones[zone.zone_id]
+            if not state.speakers[zone.speaker_id].docked:
+                zone_state.phase = ZonePhase.STANDALONE
+            elif zones.effective_occupied(self, zone):
+                zone_state.phase = ZonePhase.ACTIVE
+                # An audible zone starts its episode at the current activity.
+                zone_state.episode_peak = zone_state.activity
+            # else: no hold timers pending at startup, unoccupied = IDLE (9.1).
         for duck in self.config.duck_inputs:
             state.duck_active[duck.input_id] = bool(snapshot.duck_active.get(duck.input_id, False))
         state.suppressed = reconcile.compute_suppressed(self)
@@ -216,6 +218,8 @@ class ConductorEngine:
                 self._on_set_enabled(event, now, plan)
             case SetTvSoloMode():
                 zones.on_set_tv_solo_mode(self, event, now, plan)
+            case SetFollowMode():
+                zones.on_set_follow_mode(self, event, now, plan)
             case SetKeepGrouped():
                 grouping.on_set_keep_grouped(self, event, plan)
             case SetTrim():

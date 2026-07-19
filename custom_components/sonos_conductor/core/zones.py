@@ -17,11 +17,13 @@ from .events import (
     DockChanged,
     HomePresenceChanged,
     OccupancyChanged,
+    SetFollowMode,
     SetTvSoloMode,
     TvPlayingChanged,
 )
 from .grouping import evaluate_group_repair
 from .model import (
+    FollowMode,
     PresenceActivity,
     SpeakerState,
     ZoneConfig,
@@ -36,6 +38,49 @@ if TYPE_CHECKING:
     from .plan import Plan
 
 # ---------------------------------------------------------------------
+# Follow mode (rule 1.9): how far presence spreads audibility
+# ---------------------------------------------------------------------
+
+
+def _self_present(engine: ConductorEngine, zone: ZoneConfig) -> bool:
+    """A zone's own effective occupancy: occupied or its TV playing (1.4)."""
+    zone_state = engine.state.zones[zone.zone_id]
+    return zone_state.occupied or zone_state.tv_playing
+
+
+def effective_occupied(engine: ConductorEngine, zone: ZoneConfig) -> bool:
+    """Whether ``zone`` should be audible from presence, per follow mode (1.9).
+
+    PER_ZONE keeps the legacy behavior (the zone follows only its own
+    presence). PER_ROOM / ALL_SPEAKERS widen the trigger to any occupied
+    zone in the room / the whole house. A STANDALONE zone can never be made
+    audible (its speaker left the system), but its own presence still counts
+    as a contributor — occupancy is a property of the room, not the speaker.
+    """
+    mode = engine.state.follow_mode
+    if mode is FollowMode.PER_ZONE:
+        return _self_present(engine, zone)
+    if mode is FollowMode.PER_ROOM:
+        peers = engine.config.zones_in_room(zone.room_id)
+    else:  # ALL_SPEAKERS
+        peers = engine.config.zones
+    return any(_self_present(engine, z) for z in peers)
+
+
+def _affected_zones(engine: ConductorEngine, zone: ZoneConfig) -> tuple[ZoneConfig, ...]:
+    """Zones whose effective occupancy a change in ``zone`` can flip (1.9).
+
+    Returned in config-declaration order for deterministic effects (10.5).
+    """
+    mode = engine.state.follow_mode
+    if mode is FollowMode.PER_ZONE:
+        return (zone,)
+    if mode is FollowMode.PER_ROOM:
+        return engine.config.zones_in_room(zone.room_id)
+    return engine.config.zones  # ALL_SPEAKERS
+
+
+# ---------------------------------------------------------------------
 # Zone lifecycle (rule 1) + TV occupancy (1.4/6.1)
 # ---------------------------------------------------------------------
 
@@ -46,10 +91,12 @@ def on_occupancy(engine: ConductorEngine, event: OccupancyChanged, now: float, p
         return
     engine.state.zones[zone.zone_id].occupied = event.occupied
     if not engine.state.enabled:
-        recompute_phase(engine, zone, now)
+        for affected in _affected_zones(engine, zone):
+            recompute_phase(engine, affected, now)
         return
     overrides: dict[str, float] = {}
-    apply_zone_inputs(engine, zone, now, plan, overrides)
+    for affected in _affected_zones(engine, zone):
+        apply_zone_inputs(engine, affected, now, plan, overrides)
     engine._finish(plan, now, engine.config.tunables.rebalance_fade, overrides)
 
 
@@ -87,11 +134,13 @@ def on_tv_playing(engine: ConductorEngine, event: TvPlayingChanged, now: float, 
         zone_state.tv_playing = event.playing
         engine._mode_change_at = now  # TV-mode change (rules 4.1, 6.2)
     if not engine.state.enabled:
-        recompute_phase(engine, zone, now)
+        for affected in _affected_zones(engine, zone):
+            recompute_phase(engine, affected, now)
         reconcile.update_suppression(engine, now)
         return
     overrides: dict[str, float] = {}
-    apply_zone_inputs(engine, zone, now, plan, overrides)
+    for affected in _affected_zones(engine, zone):
+        apply_zone_inputs(engine, affected, now, plan, overrides)
     engine._finish(plan, now, engine.config.tunables.rebalance_fade, overrides)
 
 
@@ -100,12 +149,13 @@ def apply_zone_inputs(
 ) -> None:
     """Run the IDLE/ACTIVE/RELEASING transitions for effective occupancy.
 
-    Effective occupancy is ``occupied or tv_playing`` (rule 1.4).
+    Effective occupancy is ``occupied or tv_playing`` (rule 1.4), widened by
+    the follow mode (rule 1.9) to neighboring zones.
     """
     zone_state = engine.state.zones[zone.zone_id]
     if zone_state.phase is ZonePhase.STANDALONE:  # dock rules own this phase
         return
-    if zone_state.occupied or zone_state.tv_playing:
+    if effective_occupied(engine, zone):
         _activate(engine, zone, zone_state, now, plan, overrides)
     else:
         _begin_release(engine, zone, zone_state, now, plan)
@@ -228,7 +278,7 @@ def _redock(
         return
     # 2.2: recompute from current inputs as if they just changed.
     speaker_state.commanded = None  # take ownership back fresh
-    if zone_state.occupied or zone_state.tv_playing:
+    if effective_occupied(engine, zone):
         set_phase(engine, zone.zone_id, ZonePhase.ACTIVE, now)
         # A redock starts a new activity episode (1.7): whatever peaked
         # before the undock belongs to a visit the conductor did not own.
@@ -279,7 +329,7 @@ def _force_fallback_active(
         return
     if _others_audible(engine, zone):
         return
-    effective = zone_state.occupied or zone_state.tv_playing
+    effective = effective_occupied(engine, zone)
     set_phase(engine, zone.zone_id, ZonePhase.ACTIVE, now)
     engine._fallback_forced = not effective
     overrides.setdefault(zone.speaker_id, engine.config.tunables.fade_in)
@@ -293,7 +343,7 @@ def _retire_forced_fallback(
     overrides: dict[str, float],
 ) -> None:
     """A forced-ACTIVE fallback zone earns its audibility or steps aside."""
-    if zone_state.occupied or zone_state.tv_playing:
+    if effective_occupied(engine, zone):
         engine._fallback_forced = False  # earned its audibility
         return
     # 1.8: forcing is unearned audibility; an empty home retires it even
@@ -322,6 +372,33 @@ def on_set_tv_solo_mode(
 
 
 # ---------------------------------------------------------------------
+# Follow mode (rule 1.9)
+# ---------------------------------------------------------------------
+
+
+def on_set_follow_mode(
+    engine: ConductorEngine, event: SetFollowMode, now: float, plan: Plan
+) -> None:
+    """Change the follow mode and re-derive every zone's audibility (1.9).
+
+    Widening the mode fades newly-woken zones in; narrowing it lets the ones
+    that lose their trigger release through the normal hold/fade-out path, so
+    the change is as graceful as walking out of a room.
+    """
+    if engine.state.follow_mode is event.mode:
+        return
+    engine.state.follow_mode = event.mode
+    if not engine.state.enabled:
+        for zone in engine.config.zones:
+            recompute_phase(engine, zone, now)
+        return
+    overrides: dict[str, float] = {}
+    for zone in engine.config.zones:
+        apply_zone_inputs(engine, zone, now, plan, overrides)
+    engine._finish(plan, now, engine.config.tunables.rebalance_fade, overrides)
+
+
+# ---------------------------------------------------------------------
 # Phase bookkeeping
 # ---------------------------------------------------------------------
 
@@ -345,7 +422,7 @@ def recompute_phase(engine: ConductorEngine, zone: ZoneConfig, now: float) -> No
     zone_state = engine.state.zones[zone.zone_id]
     if not engine.state.speakers[zone.speaker_id].docked:
         set_phase(engine, zone.zone_id, ZonePhase.STANDALONE, now)
-    elif zone_state.occupied or zone_state.tv_playing:
+    elif effective_occupied(engine, zone):
         was_audible = zone_state.phase in AUDIBLE_PHASES
         set_phase(engine, zone.zone_id, ZonePhase.ACTIVE, now)
         # Episode-peak bookkeeping mirrors _activate (rule 1.7).

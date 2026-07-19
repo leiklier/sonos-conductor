@@ -61,6 +61,20 @@ class TvSoloMode(StrEnum):
     TV_ZONE = "tv_zone"  # suppress every zone except the TV zone(s) themselves
 
 
+class FollowMode(StrEnum):
+    """How far a zone's presence spreads audibility (rule 1.9).
+
+    Widens the effective occupancy that drives a zone ACTIVE — orthogonal to
+    TV solo (rule 6.2), which still suppresses on top of whatever this makes
+    audible. ``ALL_SPEAKERS`` is presence-gated: someone present *anywhere*
+    makes every zone audible; an empty house still falls back to rule 1.5/1.8.
+    """
+
+    PER_ZONE = "per_zone"  # a zone follows only its own presence (default)
+    PER_ROOM = "per_room"  # any zone occupied wakes every zone in its room
+    ALL_SPEAKERS = "all_speakers"  # any zone occupied wakes every zone
+
+
 @dataclass(frozen=True, slots=True)
 class SpeakerConfig:
     """A managed Sonos speaker."""
@@ -213,6 +227,8 @@ class EngineState:
     muted: bool = False
     enabled: bool = True
     tv_solo_mode: TvSoloMode = TvSoloMode.OFF
+    #: How far presence spreads audibility (rule 1.9). Published state.
+    follow_mode: FollowMode = FollowMode.PER_ZONE
     keep_grouped: bool = True
     #: Global night-mode volume ceiling engaged (rule 3.3). Published state:
     #: adapters read it, never derive it.
@@ -254,5 +270,7 @@ class InitialSnapshot:
     mute: bool = False
     enabled: bool = True
     tv_solo_mode: TvSoloMode = TvSoloMode.OFF
+    #: Follow mode at startup (rule 1.9); seeds like any flag (9.1).
+    follow_mode: FollowMode = FollowMode.PER_ZONE
     keep_grouped: bool = True
     night_mode: bool = False
