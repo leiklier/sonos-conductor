@@ -30,9 +30,9 @@ custom_components/sonos_conductor/
 ├── discovery.py          Registry scanning (speakers, dock sensors, areas, TVs)
 ├── config_flow.py        Config + options flow built on discovery suggestions
 ├── media_player.py       Master media player (HomeKit-friendly proxy)
-├── number.py             Master volume + per-speaker trim
-├── switch.py             enabled / mute / keep_grouped / night_mode
-├── select.py             tv_solo mode (off / same_room / tv_zone)
+├── number.py             Per-speaker trim
+├── switch.py             enabled / keep_grouped / night_mode
+├── select.py             tv_solo (off / same_room / tv_zone) + follow_mode (per_zone / per_room / all_speakers)
 ├── binary_sensor.py      Per-zone activity (replaces template helpers)
 └── sensor.py             Engine diagnostics
 ```
@@ -185,12 +185,11 @@ be absent; re-docking triggers repair too.
 
 | Entity | Purpose |
 |---|---|
-| `media_player.sonos_conductor` | Master proxy: play/pause/next/prev to group leader, volume = master, mute = global mute. `device_class: tv`-style TelevisionAccessory → expose via an existing HomeKit bridge for Control-Center volume control. |
-| `number.<name>_master_volume` | Master volume 0–100 for dashboards/automations (Hue Tap Dial repoints here). |
+| `media_player.sonos_conductor` | Master proxy: play/pause/next/prev to group leader, **volume slider = master, mute button = global mute** (the master volume and mute live here — no separate `number`/`switch` duplicate them). `device_class: tv`-style TelevisionAccessory → expose via an existing HomeKit bridge for Control-Center volume control. |
 | `switch.<name>_enabled` | Kill switch — instant rollback to old automations during migration. |
-| `switch.<name>_mute` | Global mute (dial button binding). |
 | `switch.<name>_night_mode` | Global volume ceiling (`night_volume_cap`): no speaker plays above the cap while on. Restored across restarts; flip it from an HA automation for scheduling. |
 | `select.<name>_tv_solo` | TV-solo mode: off / same room / TV zone only. |
+| `select.<name>_follow_mode` | Follow mode (rule 1.9): per zone / per room / all speakers. How far presence spreads audibility; orthogonal to TV solo. Restored across restarts. |
 | `switch.<name>_keep_grouped` | Runtime toggle for group repair. |
 | `binary_sensor.<name>_zone_<zone>` | Zone audible? Attributes: FSM state, target volume, room scale. Replaces the `*_audio_zone` template helpers. |
 | `sensor.<name>_state` | Diagnostics: engine state snapshot, last event, effect counts. |
@@ -235,6 +234,7 @@ See [MIGRATION.md](MIGRATION.md). Summary: install via HACS custom repo, add
 the integration, verify zone behavior with `switch.<name>_enabled` off →
 disable the 11 Sonos automations + flip the switch on. The Hue Tap Dial and
 radio-on-arrival automations repoint `input_number.master_sonos_volume` →
-`number.<name>_master_volume` and `input_boolean.sonos_is_muted` →
-`switch.<name>_mute`. The `*_audio_zone` template helpers and the two Sonos
-scripts become deletable.
+`media_player.volume_set`/`volume_up`/`volume_down` on
+`media_player.sonos_conductor` and `input_boolean.sonos_is_muted` →
+`media_player.volume_mute` on the same entity. The `*_audio_zone` template
+helpers and the two Sonos scripts become deletable.
