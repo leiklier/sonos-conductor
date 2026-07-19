@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from math import sqrt
 
 import pytest
@@ -342,6 +343,24 @@ async def test_follow_mode_select_ignores_invalid_restore(hass: HomeAssistant, m
     assert fake.events_of(SetFollowMode) == []
     select = entity_id_for(hass, "select", f"{entry.entry_id}_follow_mode")
     assert hass.states.get(select).state == "per_zone"
+
+
+async def test_follow_mode_hides_per_room_without_shared_rooms(
+    hass: HomeAssistant, monkeypatch
+) -> None:
+    """With every zone in its own room, per_room would equal per_zone —
+    the redundant option is not offered (and a restored per_room is dropped)."""
+    options = deepcopy(OPTIONS)
+    for zone in options["zones"]:
+        zone["room"] = zone["zone_id"]  # each zone its own acoustic room
+    mock_restore_cache(hass, (State("select.sonos_conductor_follow_mode", "per_room"),))
+    entry, _controller, fake = await setup_conductor(hass, monkeypatch, options=options)
+
+    select = entity_id_for(hass, "select", f"{entry.entry_id}_follow_mode")
+    state = hass.states.get(select)
+    assert state.attributes["options"] == ["per_zone", "all_speakers"]
+    assert state.state == "per_zone"
+    assert fake.events_of(SetFollowMode) == []  # per_room restore: invalid now
 
 
 # ---------------------------------------------------------------------------

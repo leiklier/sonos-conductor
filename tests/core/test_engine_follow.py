@@ -132,6 +132,24 @@ def test_all_speakers_whole_house_releases_when_empty() -> None:
         assert _phase(h, zone_id) is ZonePhase.RELEASING
 
 
+def test_all_speakers_home_presence_alone_scales_down_to_fallback() -> None:
+    """anyone_home=True without any zone presence is not "whole house on".
+
+    Zone presence drives the spread (rule 1.9); the home-level sensor only
+    gates the fallback (rule 1.8). Someone home but outside every zone —
+    bedroom, bathroom — gets the fallback baseline, not full blast: after
+    the last zone's hold expires, the house scales down to the fallback.
+    """
+    h = Harness(snapshot=make_snapshot(follow_mode=FollowMode.ALL_SPEAKERS, anyone_home=True))
+    h.occupy("kjokken")
+    h.vacate("kjokken")
+    for zone_id in ("kjokken", "spisebord", "sofakrok"):
+        h.fire_timer(timers.zone_release(zone_id))
+    assert _phase(h, "kjokken") is ZonePhase.IDLE
+    assert _phase(h, "spisebord") is ZonePhase.IDLE
+    assert _phase(h, "sofakrok") is ZonePhase.ACTIVE  # fallback carries on (1.5)
+
+
 # ---------------------------------------------------------------------
 # TV solo takes precedence over the follow mode (they are orthogonal)
 # ---------------------------------------------------------------------

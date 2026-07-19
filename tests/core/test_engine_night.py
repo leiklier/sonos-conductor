@@ -20,6 +20,7 @@ from .harness import (
     DOOR,
     KJOKKEN,
     SOFAKROK,
+    SPISEBORD,
     Harness,
     expect_no_ramp,
     expect_ramp,
@@ -217,3 +218,20 @@ class TestNightTvSoloComposition:
         effects = h.fire(TvPlayingChanged("sofakrok", False), at=30.0)
         expect_ramp(effects, KJOKKEN, 0.15, duration=2.0)  # restored, capped
         expect_no_ramp(effects, SOFAKROK)  # RELEASING: still at the cap
+
+    def test_solo_mode_relax_brings_zone_in_at_cap(self) -> None:
+        """Movie night in night mode: relaxing TV_ZONE -> SAME_ROOM fades the
+        same-room zone in at the night cap, never its full target."""
+        h = Harness()
+        h.occupy("sofakrok", at=0.0)
+        h.occupy("spisebord", at=0.0)
+        h.fire(TvPlayingChanged("sofakrok", True), at=1.0)
+        h.fire(SetNightMode(True), at=2.0)
+        h.fire(SetTvSoloMode(TvSoloMode.TV_ZONE), at=3.0)  # spisebord silenced
+
+        effects = h.fire(SetTvSoloMode(TvSoloMode.SAME_ROOM), at=10.0)
+        # Uncapped target would be 0.3 * 1.1 * 1.0 (TV forces unity scale) =
+        # 0.33; the night ceiling wins.
+        expect_ramp(effects, SPISEBORD, 0.15, duration=2.0)
+        expect_no_ramp(effects, SOFAKROK)  # already at the cap
+        assert len(ramps(effects)) == 1

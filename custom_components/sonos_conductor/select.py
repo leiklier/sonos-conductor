@@ -78,6 +78,12 @@ class SonosConductorFollowModeSelect(ConductorEntity, SelectEntity, RestoreEntit
     pushed back through the controller queue as a ``SetFollowMode`` event
     (drained after startup reconciliation, like the TV-solo select). An
     unknown or invalid restored state leaves the engine at PER_ZONE.
+
+    PER_ROOM is only offered when at least two zones share an acoustic room —
+    with every zone in its own room it would behave exactly like PER_ZONE, so
+    listing it would just be a redundant choice. (The engine accepts the mode
+    regardless; only the UI hides it, and a restored ``per_room`` on such a
+    topology falls back to the engine default via the invalid-restore path.)
     """
 
     _attr_translation_key = "follow_mode"
@@ -85,11 +91,17 @@ class SonosConductorFollowModeSelect(ConductorEntity, SelectEntity, RestoreEntit
     # entity id stable (select.sonos_conductor_follow_mode) on any HA language.
     _attr_name = "Follow mode"
     _attr_entity_category = EntityCategory.CONFIG
-    _attr_options: ClassVar[list[str]] = [mode.value for mode in FollowMode]
 
     def __init__(self, controller: SonosConductorController) -> None:
         super().__init__(controller)
         self._attr_unique_id = f"{controller.entry.entry_id}_follow_mode"
+        rooms = [zone.room_id for zone in controller.config.zones]
+        modes = (
+            list(FollowMode)
+            if len(rooms) != len(set(rooms))  # some room hosts >= 2 zones
+            else [FollowMode.PER_ZONE, FollowMode.ALL_SPEAKERS]
+        )
+        self._attr_options = [mode.value for mode in modes]
 
     @property
     def current_option(self) -> str:
