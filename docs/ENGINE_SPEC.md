@@ -8,6 +8,12 @@ conflict, this spec wins.
 
 ## 0. Definitions
 
+- **effective-occupied(zone)** — the presence that drives a zone ACTIVE
+  (rules 1.1–1.4), selected by `follow_mode` (rule 1.9). A zone's own
+  `tv_playing` always counts (rule 1.4); otherwise PER_ZONE = own `occupied`,
+  PER_ROOM = any zone in the same `room_id` is `occupied`, ALL_SPEAKERS =
+  always. Follow mode couples zones, so a single zone's occupancy change
+  re-evaluates every zone.
 - **audible(zone)** — `zone.phase ∈ {ACTIVE, RELEASING}` and the zone is not
   *solo-suppressed* (rule 6).
 - **room_scale(room)** — `volume_math.room_scale(count of audible zones in
@@ -99,6 +105,31 @@ Reconciliation is *the* only way volumes are changed. Every event handler is
     When presence returns (True or None) and nothing is audible, forcing
     resumes (fade-in): music greets whoever comes home. `None` (no input
     configured, estimator blind) behaves as present — fail-safe.
+
+1.9 **Follow mode** (`follow_mode ∈ {PER_ZONE, PER_ROOM, ALL_SPEAKERS}`):
+    selects *effective-occupied(zone)* (section 0), the presence that drives
+    the zone lifecycle (rules 1.1–1.4). It reuses the existing acoustic
+    `room_id` grouping — no separate configuration.
+
+    | mode | effective-occupied(zone) |
+    |---|---|
+    | PER_ZONE (default) | the zone's own `occupied` (per-speaker follow-me) |
+    | PER_ROOM | any zone sharing the zone's `room_id` is `occupied` |
+    | ALL_SPEAKERS | always True (every managed zone audible) |
+
+    A zone's own `tv_playing` always counts as effective occupancy (rule
+    1.4), independent of the mode. Because follow mode couples zones, every
+    event that changes occupancy (or the mode itself) re-evaluates *all*
+    zones, not just the reporting one; the extra passes are idempotent for
+    unaffected zones.
+
+    `SetFollowMode(m)`: store `follow_mode`, re-run the lifecycle for every
+    zone (zones that gain effective occupancy fade in; zones that lose it
+    enter RELEASING via the normal hold), and reconcile (`rebalance_fade`).
+    While disabled, store only + keep every zone's phase fresh (8.1). Follow
+    mode is **orthogonal to** TV-solo suppression (rule 6.2): suppression is
+    applied after audibility, so a soloing TV still silences other zones
+    even in ALL_SPEAKERS.
 
 ## 2. Dock / standalone
 

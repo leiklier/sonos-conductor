@@ -9,11 +9,10 @@ Entity ids below are what the integration creates (single device
 
 | Entity | Role |
 |---|---|
-| `media_player.sonos_conductor` | Master proxy: play/pause/skip → group leader, volume = master, mute = global (HomeKit-friendly, device class *receiver*) |
-| `number.sonos_conductor_master_volume` | Master volume 0–1 (replaces `input_number.master_sonos_volume`) |
+| `media_player.sonos_conductor` | Master proxy: play/pause/skip → group leader, **volume slider = master, mute button = global mute** (HomeKit-friendly, device class *tv*) |
 | `switch.sonos_conductor_enabled` | The conductor acts only while this is on |
-| `switch.sonos_conductor_mute` | Global mute (replaces `input_boolean.sonos_is_muted`) |
-| `switch.sonos_conductor_tv_solo` | While the TV plays, silence other rooms |
+| `select.sonos_conductor_tv_solo` | While the TV plays, silence other rooms (off / same_room / tv_zone) |
+| `select.sonos_conductor_follow_mode` | Which presence a zone follows: per_zone / per_room / all_speakers |
 | `switch.sonos_conductor_keep_grouped` | Auto-repair the Sonos group |
 | `binary_sensor.sonos_conductor_zone_*` | Zone audibility (replaces `*_audio_zone` helpers), with phase/target/room attributes |
 | `number.sonos_conductor_trim_*` | Per-speaker loudness trim |
@@ -84,16 +83,22 @@ light), *Radio - Play on First Arrival*, announcements, CO2 nudge.
 
 ## 4. Repoint consumers
 
+The master volume and mute are the master media player's own volume slider
+and mute button (`media_player.sonos_conductor`) — the same controls the
+multimedia dashboard card and HomeKit surface. There is no separate master
+`number` or mute `switch`, so point consumers at the media player.
+
 - **Philips Hue Tap Dial** (blueprint inputs in `automations.yaml`):
-  - `button_1_rotate_clockwise` / `_counter_clockwise`: replace the
-    `input_number.set_value` on `input_number.master_sonos_volume` with
-    `number.set_value` on `number.sonos_conductor_master_volume` (same 0–1
-    scale) — or simpler, `media_player.volume_up`/`volume_down` on
-    `media_player.sonos_conductor` (fixed ±0.03 steps).
-  - `button_1_hold`: `input_boolean.toggle` on `sonos_is_muted` →
-    `switch.toggle` on `switch.sonos_conductor_mute`.
-- **Radio - Play on First Arrival**: `input_number.set_value 0.15` →
-  `number.set_value` on `number.sonos_conductor_master_volume`.
+  - `button_1_rotate_clockwise` / `_counter_clockwise`:
+    `media_player.volume_up` / `media_player.volume_down` on
+    `media_player.sonos_conductor` (fixed ±0.03 steps). For an absolute
+    target instead, `media_player.volume_set` with `volume_level` (0–1).
+  - `button_1_hold`: `media_player.volume_mute` on
+    `media_player.sonos_conductor` (toggle via a template on the entity's
+    `is_volume_muted` attribute, or two branches).
+- **Radio - Play on First Arrival**: set the master with
+  `media_player.volume_set` `{volume_level: 0.15}` on
+  `media_player.sonos_conductor`.
 
 ## 5. Retire the old plumbing (after a comfortable soak)
 
@@ -106,9 +111,16 @@ targets it.
 
 ## 6. New features to switch on
 
-- **TV solo**: `switch.sonos_conductor_tv_solo` → walking to the kitchen
+- **TV solo**: `select.sonos_conductor_tv_solo` → walking to the kitchen
   during a movie no longer wakes the kitchen speaker; it fades back in when
-  the movie ends.
+  the movie ends. Modes: `off`, `same_room`, `tv_zone`.
+- **Follow mode**: `select.sonos_conductor_follow_mode` → choose how presence
+  spreads across the house. `per_zone` (default, today's behavior): each
+  speaker follows only its own area. `per_room`: any presence in a room
+  (shared `room_id` — e.g. sofakrok + spisebord = `stue`) plays the whole
+  room. `all_speakers`: everything plays regardless of presence. TV solo
+  always takes precedence — with `all_speakers` on, a soloing TV still
+  silences the zones it should.
 - **Group repair**: `switch.sonos_conductor_keep_grouped` → spontaneous
   group dissolves heal after ~15 s; an undocked Move is deliberately left
   out and rejoins when re-docked.

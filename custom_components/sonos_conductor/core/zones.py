@@ -17,11 +17,13 @@ from .events import (
     DockChanged,
     HomePresenceChanged,
     OccupancyChanged,
+    SetFollowMode,
     SetTvSoloMode,
     TvPlayingChanged,
 )
 from .grouping import evaluate_group_repair
 from .model import (
+    FollowMode,
     PresenceActivity,
     SpeakerState,
     ZoneConfig,
@@ -45,11 +47,14 @@ def on_occupancy(engine: ConductorEngine, event: OccupancyChanged, now: float, p
     if zone is None:  # 10.4
         return
     engine.state.zones[zone.zone_id].occupied = event.occupied
+    # Under PER_ROOM one zone's occupancy changes its room-mates' effective
+    # occupancy (rule 1.9), so every zone is re-evaluated, not just this one.
+    # For PER_ZONE/ALL_SPEAKERS the extra passes are idempotent no-ops.
     if not engine.state.enabled:
-        recompute_phase(engine, zone, now)
+        recompute_all_phases(engine, now)
         return
     overrides: dict[str, float] = {}
-    apply_zone_inputs(engine, zone, now, plan, overrides)
+    apply_all_zone_inputs(engine, now, plan, overrides)
     engine._finish(plan, now, engine.config.tunables.rebalance_fade, overrides)
 
 
@@ -95,17 +100,51 @@ def on_tv_playing(engine: ConductorEngine, event: TvPlayingChanged, now: float, 
     engine._finish(plan, now, engine.config.tunables.rebalance_fade, overrides)
 
 
+def follow_occupied(engine: ConductorEngine, zone: ZoneConfig) -> bool:
+    """Effective occupancy that drives a zone ACTIVE (rules 1.4, 1.9).
+
+    A zone's own ``tv_playing`` always counts (rule 1.4), independent of the
+    follow mode. Otherwise the follow mode selects the granularity:
+
+    - PER_ZONE: the zone's own ``occupied`` (per-speaker follow-me).
+    - PER_ROOM: any zone sharing this zone's ``room_id`` is ``occupied``.
+    - ALL_SPEAKERS: always audible.
+    """
+    zone_state = engine.state.zones[zone.zone_id]
+    if zone_state.tv_playing:
+        return True
+    mode = engine.state.follow_mode
+    if mode is FollowMode.ALL_SPEAKERS:
+        return True
+    if mode is FollowMode.PER_ROOM:
+        return any(
+            engine.state.zones[z.zone_id].occupied
+            for z in engine.config.zones_in_room(zone.room_id)
+        )
+    return zone_state.occupied  # PER_ZONE
+
+
+def apply_all_zone_inputs(
+    engine: ConductorEngine, now: float, plan: Plan, overrides: dict[str, float]
+) -> None:
+    """Re-run the FSM transitions for every zone against its effective
+    occupancy. Needed because follow mode (rule 1.9) lets one zone's inputs
+    change another zone's audibility; idempotent for unaffected zones."""
+    for zone in engine.config.zones:
+        apply_zone_inputs(engine, zone, now, plan, overrides)
+
+
 def apply_zone_inputs(
     engine: ConductorEngine, zone: ZoneConfig, now: float, plan: Plan, overrides: dict[str, float]
 ) -> None:
     """Run the IDLE/ACTIVE/RELEASING transitions for effective occupancy.
 
-    Effective occupancy is ``occupied or tv_playing`` (rule 1.4).
+    Effective occupancy is ``follow_occupied`` (rules 1.4, 1.9).
     """
     zone_state = engine.state.zones[zone.zone_id]
     if zone_state.phase is ZonePhase.STANDALONE:  # dock rules own this phase
         return
-    if zone_state.occupied or zone_state.tv_playing:
+    if follow_occupied(engine, zone):
         _activate(engine, zone, zone_state, now, plan, overrides)
     else:
         _begin_release(engine, zone, zone_state, now, plan)
@@ -228,7 +267,7 @@ def _redock(
         return
     # 2.2: recompute from current inputs as if they just changed.
     speaker_state.commanded = None  # take ownership back fresh
-    if zone_state.occupied or zone_state.tv_playing:
+    if follow_occupied(engine, zone):
         set_phase(engine, zone.zone_id, ZonePhase.ACTIVE, now)
         # A redock starts a new activity episode (1.7): whatever peaked
         # before the undock belongs to a visit the conductor did not own.
@@ -279,7 +318,7 @@ def _force_fallback_active(
         return
     if _others_audible(engine, zone):
         return
-    effective = zone_state.occupied or zone_state.tv_playing
+    effective = follow_occupied(engine, zone)
     set_phase(engine, zone.zone_id, ZonePhase.ACTIVE, now)
     engine._fallback_forced = not effective
     overrides.setdefault(zone.speaker_id, engine.config.tunables.fade_in)
@@ -293,7 +332,7 @@ def _retire_forced_fallback(
     overrides: dict[str, float],
 ) -> None:
     """A forced-ACTIVE fallback zone earns its audibility or steps aside."""
-    if zone_state.occupied or zone_state.tv_playing:
+    if follow_occupied(engine, zone):
         engine._fallback_forced = False  # earned its audibility
         return
     # 1.8: forcing is unearned audibility; an empty home retires it even
@@ -322,6 +361,28 @@ def on_set_tv_solo_mode(
 
 
 # ---------------------------------------------------------------------
+# Follow mode (rule 1.9)
+# ---------------------------------------------------------------------
+
+
+def on_set_follow_mode(
+    engine: ConductorEngine, event: SetFollowMode, now: float, plan: Plan
+) -> None:
+    """Rule 1.9: switch the presence granularity a zone follows.
+
+    Zones that gain effective occupancy fade in; zones that lose it start
+    the normal hold/RELEASING flow. Orthogonal to TV-solo suppression.
+    """
+    engine.state.follow_mode = event.mode
+    if not engine.state.enabled:
+        recompute_all_phases(engine, now)  # keep the world model fresh (8.1)
+        return
+    overrides: dict[str, float] = {}
+    apply_all_zone_inputs(engine, now, plan, overrides)
+    engine._finish(plan, now, engine.config.tunables.rebalance_fade, overrides)
+
+
+# ---------------------------------------------------------------------
 # Phase bookkeeping
 # ---------------------------------------------------------------------
 
@@ -338,6 +399,12 @@ def set_phase(engine: ConductorEngine, zone_id: str, phase: ZonePhase, now: floa
         zone_state.last_transition = now
 
 
+def recompute_all_phases(engine: ConductorEngine, now: float) -> None:
+    """Canonical phase for every zone (follow mode couples zones)."""
+    for zone in engine.config.zones:
+        recompute_phase(engine, zone, now)
+
+
 def recompute_phase(engine: ConductorEngine, zone: ZoneConfig, now: float) -> None:
     """Canonical phase from current inputs (8.2 enable, and while
     disabled so the world model stays fresh). No RELEASING here: hold
@@ -345,7 +412,7 @@ def recompute_phase(engine: ConductorEngine, zone: ZoneConfig, now: float) -> No
     zone_state = engine.state.zones[zone.zone_id]
     if not engine.state.speakers[zone.speaker_id].docked:
         set_phase(engine, zone.zone_id, ZonePhase.STANDALONE, now)
-    elif zone_state.occupied or zone_state.tv_playing:
+    elif follow_occupied(engine, zone):
         was_audible = zone_state.phase in AUDIBLE_PHASES
         set_phase(engine, zone.zone_id, ZonePhase.ACTIVE, now)
         # Episode-peak bookkeeping mirrors _activate (rule 1.7).

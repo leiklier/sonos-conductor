@@ -185,12 +185,11 @@ be absent; re-docking triggers repair too.
 
 | Entity | Purpose |
 |---|---|
-| `media_player.sonos_conductor` | Master proxy: play/pause/next/prev to group leader, volume = master, mute = global mute. `device_class: tv`-style TelevisionAccessory → expose via an existing HomeKit bridge for Control-Center volume control. |
-| `number.<name>_master_volume` | Master volume 0–100 for dashboards/automations (Hue Tap Dial repoints here). |
+| `media_player.sonos_conductor` | Master proxy: play/pause/next/prev to group leader; **its volume slider is the master and its mute button the global mute** (Hue Tap Dial / dashboards / HomeKit repoint here). `device_class: tv`-style TelevisionAccessory → expose via an existing HomeKit bridge for Control-Center volume control. |
 | `switch.<name>_enabled` | Kill switch — instant rollback to old automations during migration. |
-| `switch.<name>_mute` | Global mute (dial button binding). |
 | `switch.<name>_night_mode` | Global volume ceiling (`night_volume_cap`): no speaker plays above the cap while on. Restored across restarts; flip it from an HA automation for scheduling. |
 | `select.<name>_tv_solo` | TV-solo mode: off / same room / TV zone only. |
+| `select.<name>_follow_mode` | Follow mode (rule 1.9): per_zone / per_room / all_speakers. Reuses the acoustic `room_id` grouping; orthogonal to TV solo. |
 | `switch.<name>_keep_grouped` | Runtime toggle for group repair. |
 | `binary_sensor.<name>_zone_<zone>` | Zone audible? Attributes: FSM state, target volume, room scale. Replaces the `*_audio_zone` template helpers. |
 | `sensor.<name>_state` | Diagnostics: engine state snapshot, last event, effect counts. |
@@ -235,6 +234,7 @@ See [MIGRATION.md](MIGRATION.md). Summary: install via HACS custom repo, add
 the integration, verify zone behavior with `switch.<name>_enabled` off →
 disable the 11 Sonos automations + flip the switch on. The Hue Tap Dial and
 radio-on-arrival automations repoint `input_number.master_sonos_volume` →
-`number.<name>_master_volume` and `input_boolean.sonos_is_muted` →
-`switch.<name>_mute`. The `*_audio_zone` template helpers and the two Sonos
-scripts become deletable.
+`media_player.volume_set`/`volume_up`/`volume_down` on
+`media_player.sonos_conductor`, and `input_boolean.sonos_is_muted` →
+`media_player.volume_mute` on the same player. The `*_audio_zone` template
+helpers and the two Sonos scripts become deletable.

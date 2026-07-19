@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .model import PresenceActivity, TvSoloMode
+from .model import FollowMode, PresenceActivity, TvSoloMode
 
 
 @dataclass(frozen=True, slots=True)
@@ -123,6 +123,13 @@ class SetEnabled(Event):
 @dataclass(frozen=True, slots=True)
 class SetTvSoloMode(Event):
     mode: TvSoloMode
+
+
+@dataclass(frozen=True, slots=True)
+class SetFollowMode(Event):
+    """Change which presence a zone follows to become audible (rule 1.9)."""
+
+    mode: FollowMode
 
 
 @dataclass(frozen=True, slots=True)

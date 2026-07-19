@@ -23,6 +23,7 @@ from datetime import timedelta
 import pytest
 from homeassistant.const import EVENT_CALL_SERVICE
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_component import DATA_INSTANCES
 from homeassistant.setup import async_setup_component
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import (
@@ -181,7 +182,8 @@ async def _advance(hass: HomeAssistant, seconds: float) -> None:
 
 
 def _master(hass: HomeAssistant) -> float:
-    return float(hass.states.get("number.sonos_conductor_master_volume").state)
+    # Master volume lives on the master media player's volume slider.
+    return float(hass.states.get("media_player.sonos_conductor").attributes["volume_level"])
 
 
 async def test_startup_adopts_reality_quietly(hass: HomeAssistant) -> None:
@@ -250,14 +252,12 @@ async def test_occupancy_flicker_within_hold_is_silent(hass: HomeAssistant) -> N
     assert _volume_writes(calls, n) == []
 
 
-async def test_master_number_fans_out_to_audible_zones(hass: HomeAssistant) -> None:
+async def test_master_volume_fans_out_to_audible_zones(hass: HomeAssistant) -> None:
     _entry, calls, n = await _setup(hass, occupied=("kjokken",))
-    await hass.services.async_call(
-        "number",
-        "set_value",
-        {"entity_id": "number.sonos_conductor_master_volume", "value": 0.4},
-        blocking=True,
-    )
+    # media_player.volume_set is globally mocked here (it captures speaker
+    # writes), so drive the master player's entity object directly.
+    player = hass.data[DATA_INSTANCES]["media_player"].get_entity("media_player.sonos_conductor")
+    await player.async_set_volume_level(0.4)
     await hass.async_block_till_done()
 
     writes = dict(_volume_writes(calls, n))
@@ -324,14 +324,12 @@ async def test_undock_hands_speaker_over_redock_reclaims(hass: HomeAssistant) ->
     assert writes[ARC] == pytest.approx(0.0)  # fallback retires again
 
 
-async def test_mute_switch_fans_out(hass: HomeAssistant) -> None:
+async def test_mute_fans_out(hass: HomeAssistant) -> None:
     _entry, calls, _n = await _setup(hass)
-    await hass.services.async_call(
-        "switch",
-        "turn_on",
-        {"entity_id": "switch.sonos_conductor_mute"},
-        blocking=True,
-    )
+    # volume_mute is globally mocked (it captures speaker mutes), so drive the
+    # master player's entity object directly.
+    player = hass.data[DATA_INSTANCES]["media_player"].get_entity("media_player.sonos_conductor")
+    await player.async_mute_volume(True)
     await hass.async_block_till_done()
     muted = {(c.data["entity_id"], c.data["is_volume_muted"]) for c in calls["mute"]}
     assert muted == {(s, True) for s in ALL_SPEAKERS}

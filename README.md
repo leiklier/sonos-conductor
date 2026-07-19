@@ -10,6 +10,11 @@ a testable state machine replacing YAML automation sprawl.
 - **Master volume** — one slider / dial / HomeKit control for the whole house.
 - **Presence zones** — speakers fade in when a zone becomes occupied and fade
   out (after a hold time) when it empties.
+- **Follow mode** — choose how presence spreads: `per_zone` (each speaker
+  follows only its own area), `per_room` (any presence in a room plays every
+  speaker sharing that acoustic room, e.g. an open living room and its dining
+  nook), or `all_speakers` (everything plays regardless of presence). TV solo
+  always takes precedence over the follow mode.
 - **Rich presence via [Presence Conductor](https://github.com/leiklier/presence-conductor)** —
   when installed, its room devices are auto-discovered and preferred over
   plain binary sensors. Their activity classification shapes the hold time:

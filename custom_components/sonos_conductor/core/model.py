@@ -61,6 +61,20 @@ class TvSoloMode(StrEnum):
     TV_ZONE = "tv_zone"  # suppress every zone except the TV zone(s) themselves
 
 
+class FollowMode(StrEnum):
+    """Which presence a zone follows to become audible (rule 1.9).
+
+    Naming uses the core's own vocabulary: a *zone* is one speaker; a *room*
+    (``room_id``) is the acoustic group zones share (e.g. an open living room
+    and its dining nook both in ``stue``). The music "follows you" at one of
+    three granularities:
+    """
+
+    PER_ZONE = "per_zone"  # each zone follows only its own occupancy (default)
+    PER_ROOM = "per_room"  # a zone is audible while any zone in its room is occupied
+    ALL_SPEAKERS = "all_speakers"  # every managed zone is audible regardless of presence
+
+
 @dataclass(frozen=True, slots=True)
 class SpeakerConfig:
     """A managed Sonos speaker."""
@@ -213,6 +227,9 @@ class EngineState:
     muted: bool = False
     enabled: bool = True
     tv_solo_mode: TvSoloMode = TvSoloMode.OFF
+    #: Which presence a zone follows to become audible (rule 1.9). Orthogonal
+    #: to TV-solo suppression, which is still applied on top of audibility.
+    follow_mode: FollowMode = FollowMode.PER_ZONE
     keep_grouped: bool = True
     #: Global night-mode volume ceiling engaged (rule 3.3). Published state:
     #: adapters read it, never derive it.
@@ -254,5 +271,6 @@ class InitialSnapshot:
     mute: bool = False
     enabled: bool = True
     tv_solo_mode: TvSoloMode = TvSoloMode.OFF
+    follow_mode: FollowMode = FollowMode.PER_ZONE
     keep_grouped: bool = True
     night_mode: bool = False
