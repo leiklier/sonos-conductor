@@ -1,4 +1,8 @@
-"""Conductor switches: enabled / mute / keep_grouped / night_mode."""
+"""Conductor switches: enabled / keep_grouped / night_mode.
+
+Mute is not among them — it lives on ``media_player.sonos_conductor`` (its
+mute button drives the engine directly), so no switch duplicates it.
+"""
 
 from __future__ import annotations
 
@@ -15,7 +19,7 @@ from homeassistant.helpers.restore_state import RestoreEntity
 
 from .const import DOMAIN
 from .controller import ConductorEntity, SonosConductorController
-from .core.events import Event, SetEnabled, SetKeepGrouped, SetMute, SetNightMode
+from .core.events import Event, SetEnabled, SetKeepGrouped, SetNightMode
 from .core.model import EngineState
 
 
@@ -44,13 +48,6 @@ SWITCHES: tuple[ConductorSwitchDescription, ...] = (
         entity_category=EntityCategory.CONFIG,
         is_on_fn=lambda state: state.enabled,
         event_fn=SetEnabled,
-    ),
-    ConductorSwitchDescription(
-        key="mute",
-        name="Mute",
-        entity_category=None,
-        is_on_fn=lambda state: state.muted,
-        event_fn=lambda on: SetMute(on, source="switch"),
     ),
     ConductorSwitchDescription(
         key="keep_grouped",

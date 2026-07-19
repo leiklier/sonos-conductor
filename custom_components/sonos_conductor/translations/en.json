@@ -224,6 +224,13 @@
           "same_room": "Same room",
           "tv_zone": "TV zone only"
         }
+      },
+      "follow_mode": {
+        "state": {
+          "per_zone": "Per zone",
+          "per_room": "Per room",
+          "all_speakers": "All speakers"
+        }
       }
     }
   }

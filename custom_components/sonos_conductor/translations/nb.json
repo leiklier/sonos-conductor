@@ -224,6 +224,13 @@
           "same_room": "Samme rom",
           "tv_zone": "Kun TV-sonen"
         }
+      },
+      "follow_mode": {
+        "state": {
+          "per_zone": "Per sone",
+          "per_room": "Per rom",
+          "all_speakers": "Alle høyttalere"
+        }
       }
     }
   }
