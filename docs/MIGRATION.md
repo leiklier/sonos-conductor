@@ -118,8 +118,10 @@ targets it.
 - **Follow mode**: `select.sonos_conductor_follow_mode` → keep the default
   *per zone* (music follows you speaker by speaker), or widen it to *per
   room* (any presence in the stue wakes both stue speakers) or *all
-  speakers* (presence anywhere plays the whole house). It is independent of
-  TV solo — TV solo still silences rooms on top of any follow mode.
+  speakers* (the whole house plays while anyone is home — zone presence or
+  the anyone-home sensor; an empty house still goes quiet). It is
+  independent of TV solo — TV solo still silences rooms on top of any
+  follow mode.
 - **Group repair**: `switch.sonos_conductor_keep_grouped` → spontaneous
   group dissolves heal after ~15 s; an undocked Move is deliberately left
   out and rejoins when re-docked.

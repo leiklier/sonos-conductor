@@ -12,7 +12,11 @@ sofakrok (both room stue); sofakrok is the fallback zone and has the TV.
 from __future__ import annotations
 
 from custom_components.sonos_conductor.core import reconcile, timers
-from custom_components.sonos_conductor.core.events import SetFollowMode, TvPlayingChanged
+from custom_components.sonos_conductor.core.events import (
+    HomePresenceChanged,
+    SetFollowMode,
+    TvPlayingChanged,
+)
 from custom_components.sonos_conductor.core.model import FollowMode, TvSoloMode, ZonePhase
 from tests.core.harness import (
     KJOKKEN,
@@ -132,22 +136,57 @@ def test_all_speakers_whole_house_releases_when_empty() -> None:
         assert _phase(h, zone_id) is ZonePhase.RELEASING
 
 
-def test_all_speakers_home_presence_alone_scales_down_to_fallback() -> None:
-    """anyone_home=True without any zone presence is not "whole house on".
+def test_all_speakers_home_presence_alone_keeps_whole_house_on() -> None:
+    """anyone_home=True counts as presence anywhere in ALL_SPEAKERS.
 
-    Zone presence drives the spread (rule 1.9); the home-level sensor only
-    gates the fallback (rule 1.8). Someone home but outside every zone —
-    bedroom, bathroom — gets the fallback baseline, not full blast: after
-    the last zone's hold expires, the house scales down to the fallback.
+    The point of the mode is sound in every zone while someone is home —
+    someone outside every zone (bedroom, bathroom) must not scale the house
+    down. Seeds whole-house on, and zone vacancy never starts a release.
     """
     h = Harness(snapshot=make_snapshot(follow_mode=FollowMode.ALL_SPEAKERS, anyone_home=True))
-    h.occupy("kjokken")
-    h.vacate("kjokken")
     for zone_id in ("kjokken", "spisebord", "sofakrok"):
+        assert _phase(h, zone_id) is ZonePhase.ACTIVE  # seeded on (9.1)
+    h.occupy("kjokken")
+    effects = h.vacate("kjokken")
+    for zone_id in ("kjokken", "spisebord", "sofakrok"):
+        assert _phase(h, zone_id) is ZonePhase.ACTIVE  # anyone_home holds it
+    expect_no_volume_effects(effects)
+
+
+def test_all_speakers_home_departure_releases_whole_house() -> None:
+    """anyone_home True->False in ALL_SPEAKERS: the house releases through
+    the normal holds, and the fallback is not forced (rule 1.8)."""
+    h = Harness(snapshot=make_snapshot(follow_mode=FollowMode.ALL_SPEAKERS, anyone_home=True))
+    h.fire(HomePresenceChanged(False))
+    for zone_id in ("kjokken", "spisebord", "sofakrok"):
+        assert _phase(h, zone_id) is ZonePhase.RELEASING
+        h.fire_timer(timers.zone_release(zone_id))
+    for zone_id in ("kjokken", "spisebord", "sofakrok"):
+        assert _phase(h, zone_id) is ZonePhase.IDLE  # empty home: silence
+
+
+def test_all_speakers_home_arrival_fades_whole_house_in() -> None:
+    h = Harness(snapshot=make_snapshot(follow_mode=FollowMode.ALL_SPEAKERS, anyone_home=False))
+    effects = h.fire(HomePresenceChanged(True))
+    for zone_id in ("kjokken", "spisebord", "sofakrok"):
+        assert _phase(h, zone_id) is ZonePhase.ACTIVE
+    expect_ramp(effects, KJOKKEN, MASTER * 1.2)
+    expect_ramp(effects, SPISEBORD, MASTER * 1.1 * STUE_2)
+    expect_ramp(effects, SOFAKROK, MASTER * 1.0 * STUE_2)
+
+
+def test_all_speakers_blind_home_sensor_scales_down_to_fallback() -> None:
+    """anyone_home True->None (estimator blind): blind must not keep the
+    house on — it releases through the holds and the fallback carries on
+    (None fails safe as present for rule 1.5)."""
+    h = Harness(snapshot=make_snapshot(follow_mode=FollowMode.ALL_SPEAKERS, anyone_home=True))
+    h.fire(HomePresenceChanged(None))
+    for zone_id in ("kjokken", "spisebord", "sofakrok"):
+        assert _phase(h, zone_id) is ZonePhase.RELEASING
         h.fire_timer(timers.zone_release(zone_id))
     assert _phase(h, "kjokken") is ZonePhase.IDLE
     assert _phase(h, "spisebord") is ZonePhase.IDLE
-    assert _phase(h, "sofakrok") is ZonePhase.ACTIVE  # fallback carries on (1.5)
+    assert _phase(h, "sofakrok") is ZonePhase.ACTIVE  # fallback baseline
 
 
 # ---------------------------------------------------------------------

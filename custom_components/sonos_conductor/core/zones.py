@@ -56,6 +56,12 @@ def effective_occupied(engine: ConductorEngine, zone: ZoneConfig) -> bool:
     zone in the room / the whole house. A STANDALONE zone can never be made
     audible (its speaker left the system), but its own presence still counts
     as a contributor — occupancy is a property of the room, not the speaker.
+
+    In ALL_SPEAKERS, home-level presence (rule 1.8) doubles as presence
+    anywhere: someone home but outside every zone (bedroom, bathroom) still
+    means "sound in all zones" — that is what the mode is for. Strictly
+    ``True`` only: ``None`` (no input configured, estimator blind) must not
+    turn the whole house on.
     """
     mode = engine.state.follow_mode
     if mode is FollowMode.PER_ZONE:
@@ -63,6 +69,8 @@ def effective_occupied(engine: ConductorEngine, zone: ZoneConfig) -> bool:
     if mode is FollowMode.PER_ROOM:
         peers = engine.config.zones_in_room(zone.room_id)
     else:  # ALL_SPEAKERS
+        if engine.state.anyone_home is True:
+            return True
         peers = engine.config.zones
     return any(_self_present(engine, z) for z in peers)
 
@@ -118,11 +126,24 @@ def on_activity(engine: ConductorEngine, event: ActivityChanged, now: float) -> 
 def on_home_presence(
     engine: ConductorEngine, event: HomePresenceChanged, now: float, plan: Plan
 ) -> None:
-    """Rule 1.8: home-level presence gates fallback forcing."""
+    """Rule 1.8: home-level presence gates fallback forcing.
+
+    In ALL_SPEAKERS (rule 1.9) it also counts as presence anywhere, so a
+    flip re-runs every zone's transitions: arriving fades the whole house
+    in; leaving lets every zone release through its normal hold.
+    """
     engine.state.anyone_home = event.present
+    all_speakers = engine.state.follow_mode is FollowMode.ALL_SPEAKERS
     if not engine.state.enabled:
+        if all_speakers:
+            for zone in engine.config.zones:
+                recompute_phase(engine, zone, now)
         return
-    engine._finish(plan, now, engine.config.tunables.rebalance_fade, {})
+    overrides: dict[str, float] = {}
+    if all_speakers:
+        for zone in engine.config.zones:
+            apply_zone_inputs(engine, zone, now, plan, overrides)
+    engine._finish(plan, now, engine.config.tunables.rebalance_fade, overrides)
 
 
 def on_tv_playing(engine: ConductorEngine, event: TvPlayingChanged, now: float, plan: Plan) -> None:

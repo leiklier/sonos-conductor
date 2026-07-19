@@ -103,7 +103,9 @@ presence reaches.
     Zones audible on their own merits (occupied / TV) are unaffected.
     When presence returns (True or None) and nothing is audible, forcing
     resumes (fade-in): music greets whoever comes home. `None` (no input
-    configured, estimator blind) behaves as present — fail-safe.
+    configured, estimator blind) behaves as present — fail-safe. In
+    ALL_SPEAKERS follow mode, `anyone_home` additionally feeds effective
+    occupancy itself (rule 1.9).
 
 1.9 **Follow mode** (`follow_mode ∈ {PER_ZONE, PER_ROOM, ALL_SPEAKERS}`,
     default `PER_ZONE`, published state, seeded from the snapshot like any
@@ -115,7 +117,7 @@ presence reaches.
     |---|---|
     | PER_ZONE | `self_present(zone)` (legacy behavior) |
     | PER_ROOM | any zone in `zone.room` has `self_present` |
-    | ALL_SPEAKERS | any zone in the house has `self_present` |
+    | ALL_SPEAKERS | `anyone_home is True`, or any zone has `self_present` |
 
     A STANDALONE zone is never made audible (its speaker left the system),
     but its own `self_present` still counts as a contributor — occupancy is a
@@ -123,13 +125,20 @@ presence reaches.
     now flip its neighbors' effective occupancy, `OccupancyChanged` /
     `TvPlayingChanged` re-run the IDLE/ACTIVE/RELEASING transitions (rules
     1.1–1.4) for every zone in the *affected set* (the changed zone in
-    PER_ZONE; its room in PER_ROOM; all zones in ALL_SPEAKERS).
+    PER_ZONE; its room in PER_ROOM; all zones in ALL_SPEAKERS), and in
+    ALL_SPEAKERS a `HomePresenceChanged` re-runs them for all zones too.
 
-    ALL_SPEAKERS is **presence-gated**, not "always on": with nobody present
-    the whole house is IDLE and the ordinary fallback (1.5) / empty-home
-    (1.8) rules apply. Follow mode is orthogonal to TV solo (rule 6.2): solo
-    suppression applies *on top of* whatever effective occupancy makes
-    audible, so a playing TV can still silence rooms even in ALL_SPEAKERS.
+    ALL_SPEAKERS is **presence-gated**, not "always on": the point of the
+    mode is sound in every zone *while someone is home*. Home-level presence
+    (rule 1.8's input) doubles as presence anywhere — someone home but
+    outside every zone (bedroom, bathroom) keeps the whole house playing.
+    Strictly `anyone_home is True`: `None` (no input configured, estimator
+    blind) never turns the house on — without a home sensor the mode stays
+    zone-driven, and with nobody present the whole house releases through
+    its holds and the ordinary fallback (1.5) / empty-home (1.8) rules
+    apply. Follow mode is orthogonal to TV solo (rule 6.2): solo suppression
+    applies *on top of* whatever effective occupancy makes audible, so a
+    playing TV can still silence rooms even in ALL_SPEAKERS.
 
     `SetFollowMode(m)`: if changed, re-derive every zone from current inputs
     and reconcile (`rebalance_fade`). Widening fades newly-woken zones in;
