@@ -13,12 +13,15 @@ from __future__ import annotations
 
 from custom_components.sonos_conductor.core import reconcile, timers
 from custom_components.sonos_conductor.core.events import (
+    DockChanged,
+    DuckChanged,
     HomePresenceChanged,
     SetFollowMode,
     TvPlayingChanged,
 )
 from custom_components.sonos_conductor.core.model import FollowMode, TvSoloMode, ZonePhase
 from tests.core.harness import (
+    DOOR,
     KJOKKEN,
     SOFAKROK,
     SPISEBORD,
@@ -224,6 +227,43 @@ def test_same_room_solo_with_per_room_follow() -> None:
     assert _phase(h, "kjokken") is ZonePhase.ACTIVE
     assert not _audible(h, "kjokken")  # suppressed: no TV in the kitchen room
     assert _audible(h, "sofakrok")  # the TV room plays
+
+
+# ---------------------------------------------------------------------
+# Ducking and docking compose with the follow mode unchanged
+# ---------------------------------------------------------------------
+
+
+def test_all_speakers_ducking_caps_and_restores_whole_house() -> None:
+    """The duck cap applies in desired() (spec section 0), downstream of the
+    follow mode: the whole audible house caps and restores together."""
+    h = Harness(snapshot=make_snapshot(follow_mode=FollowMode.ALL_SPEAKERS, anyone_home=True))
+    # Whole house on; adopt the startup convergence targets as commanded.
+    targets = {
+        KJOKKEN: MASTER * 1.2,
+        SPISEBORD: MASTER * 1.1 * STUE_2,
+        SOFAKROK: MASTER * 1.0 * STUE_2,
+    }
+    effects = h.fire(DuckChanged(DOOR, True))
+    for speaker in (KJOKKEN, SPISEBORD, SOFAKROK):
+        expect_ramp(effects, speaker, 0.05, duration=0.0)  # engage_fade
+    effects = h.fire(DuckChanged(DOOR, False))
+    for speaker, target in targets.items():
+        expect_ramp(effects, speaker, target, duration=2.0)  # release_fade
+
+
+def test_all_speakers_undock_leaves_standalone_redock_rejoins() -> None:
+    """STANDALONE wins over the follow mode: all_speakers cannot drag an
+    undocked Move back in; redocking rejoins with a fade-in (rule 2.2)."""
+    h = Harness(snapshot=make_snapshot(follow_mode=FollowMode.ALL_SPEAKERS, anyone_home=True))
+    effects = h.fire(DockChanged(KJOKKEN, False))
+    assert _phase(h, "kjokken") is ZonePhase.STANDALONE
+    expect_no_ramp(effects, KJOKKEN)  # handed over untouched (2.1)
+    assert reconcile.desired(h.engine, KJOKKEN) is None  # never touch it
+
+    effects = h.fire(DockChanged(KJOKKEN, True))
+    assert _phase(h, "kjokken") is ZonePhase.ACTIVE  # anyone home: rejoins
+    expect_ramp(effects, KJOKKEN, MASTER * 1.2, duration=3.0)  # fade_in
 
 
 # ---------------------------------------------------------------------
