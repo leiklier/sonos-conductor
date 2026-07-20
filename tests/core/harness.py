@@ -27,6 +27,7 @@ from custom_components.sonos_conductor.core.model import (
     ConductorConfig,
     DuckInputConfig,
     FollowMode,
+    IdleAttenuation,
     InitialSnapshot,
     PresenceActivity,
     SpeakerConfig,
@@ -114,6 +115,7 @@ def make_snapshot(
     enabled: bool = True,
     tv_solo_mode: TvSoloMode = TvSoloMode.OFF,
     follow_mode: FollowMode = FollowMode.PER_ZONE,
+    idle_attenuation: IdleAttenuation = IdleAttenuation.MAX,
     keep_grouped: bool = True,
     night_mode: bool = False,
 ) -> InitialSnapshot:
@@ -148,6 +150,7 @@ def make_snapshot(
         enabled=enabled,
         tv_solo_mode=tv_solo_mode,
         follow_mode=follow_mode,
+        idle_attenuation=idle_attenuation,
         keep_grouped=keep_grouped,
         night_mode=night_mode,
     )
