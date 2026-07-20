@@ -10,16 +10,30 @@ conflict, this spec wins.
 
 - **audible(zone)** — `zone.phase ∈ {ACTIVE, RELEASING}` and the zone is not
   *solo-suppressed* (rule 6).
-- **room_scale(room)** — `volume_math.room_scale(count of audible zones in
-  room, any audible zone in room has tv_playing)`.
+- **zone_level(zone)** — the zone's relative volume level: `1.0` if
+  *audible(zone)*; `0.0` if STANDALONE (2.3), solo-suppressed (6.2) or
+  `anyone_home is False` (1.8); else the **idle bed** fraction selected by
+  `idle_attenuation` (rule 3.4): `idle_gentle_level` / `idle_balanced_level`
+  / `0.0` for GENTLE / BALANCED / MAX.
+- **room_scale(room)** — `volume_math.room_scale(zone_levels of the room's
+  zones, any audible zone in room has tv_playing)` = `1/sqrt(Σ level²)`,
+  never above 1.0 (a room summing quieter than one full zone is not
+  boosted), forced to 1.0 while a TV plays. For N audible zones this is the
+  classic `1/√N`; beds weigh in by their level, so total perceived room
+  loudness is one full zone regardless of the bed.
 - **desired(speaker)** —
   - `None` (do not touch) if speaker is STANDALONE or engine disabled;
-  - `0.0` if its zone is not audible;
-  - else `min(speaker_target(master, trim, room_scale), duck_cap, night_cap)`
+  - `0.0` if `zone_level(zone) = 0`;
+  - else `zone_level × min(speaker_target(master, trim, room_scale),
+    duck_cap, night_cap)`
     where `duck_cap` = lowest `duck_volume` among active duck inputs (∞ if
     none) and `night_cap` = `night_volume_cap` while `night_mode` is on
-    (∞ otherwise). This is the single point where both caps apply — fades,
-    zone activations, rebalances, group joins and startup all go through it.
+    (∞ otherwise). The level multiplies the *capped* target: an idle bed is
+    always its preset fraction of what the zone would play if active, so
+    its relative attenuation survives night mode and ducking (a gentle bed
+    at night plays half the cap, not up to the cap). This is the single
+    point where both caps apply — fades, zone activations, rebalances,
+    group joins, idle beds and startup all go through it.
 - **reconcile(fade_context)** — for every speaker whose `desired ≠ commanded`
   (per `volumes_equal`), emit `RampVolume(speaker, desired, duration)` and set
   `commanded = desired`. The duration comes from the *cause*:
@@ -31,6 +45,7 @@ conflict, this spec wins.
   | master change | `master_fade` (all) |
   | duck engage / release | duck input's `engage_fade` / `release_fade` |
   | night mode engage / release | `rebalance_fade` |
+  | idle-attenuation change | `rebalance_fade` |
   | external-volume sync | `0` for the reporting speaker (it is already there), `rebalance_fade` for others |
   | TV mode / tv-solo-mode change | `rebalance_fade` |
   | enable / startup convergence | `rebalance_fade` |
@@ -180,6 +195,25 @@ presence reaches.
     mode. While disabled: store only (8.1); the 8.2 enable reconcile applies
     the cap.
 
+3.4 **Idle attenuation** (`idle_attenuation ∈ {GENTLE, BALANCED, MAX}`,
+    default `MAX`, published state, seeded from the snapshot per 9.1):
+    how much of its would-be level a non-audible zone keeps as a background
+    **bed** instead of hard silence (`zone_level`, section 0). `MAX` is
+    full attenuation — idle zones are silent, the pre-3.4 behavior. The bed
+    rides `desired()`'s single funnel, so everything composes unchanged:
+    the bed is the preset fraction of the fully capped active target (so
+    duck and night compression preserve its relative attenuation — see
+    section 0), TV-solo suppression (6.2) and a
+    definitively empty home (1.8) keep such zones hard-silent, STANDALONE
+    speakers are never touched (2.3), and beds weigh into `room_scale` by
+    their level so the bed never raises a room's total loudness. Bed zones
+    remain *not audible*: they do not reverse-sync (4.1), do not retire
+    fallback forcing (1.5), and their FSMs run normally — a zone fade-out
+    simply lands on the bed instead of zero.
+    `SetIdleAttenuation(m)`: if changed, stamp the mode-change timestamp
+    (rule 4.1) and reconcile (`rebalance_fade`). While disabled: store only
+    (8.1); the 8.2 enable reconcile applies the bed.
+
 ## 4. External volume reports (reverse sync)
 
 4.1 `ExternalVolume(speaker, v)`: update `speakers[s].volume = v` always.
@@ -206,7 +240,8 @@ presence reaches.
     the stale external report).
 
 4.5 Night pull-back: while night mode is on, a report with
-    `v > night_volume_cap` from a non-STANDALONE speaker of an audible zone
+    `v > night_volume_cap` from a non-STANDALONE speaker of a zone with
+    `zone_level > 0` (audible, or playing an idle bed per rule 3.4)
     is not debounced (4.1 already bars it from sync). Instead the engine
     adopts it as the speaker's commanded volume and reconciles
     (`rebalance_fade`), ramping the reporting speaker back down to its
@@ -348,3 +383,8 @@ presence reaches.
   while the TV plays → every zone's FSM is ACTIVE, yet only the TV zone is
   audible (solo suppression overrides the follow mode). PER_ROOM: occupancy
   in one room wakes its room-mates but never the other room.
+- R13 Idle attenuation GENTLE: the occupied zone plays full, its room-mate
+  plays the bed, and the pair's total room power equals exactly one full
+  zone; a TV solo still hard-silences bed zones; at night the bed plays
+  half the *capped* active level (0.075 for a 0.15 cap, at any master) and
+  a report above it from a bed speaker gets the 4.5 pull-back.

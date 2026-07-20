@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .model import FollowMode, PresenceActivity, TvSoloMode
+from .model import FollowMode, IdleAttenuation, PresenceActivity, TvSoloMode
 
 
 @dataclass(frozen=True, slots=True)
@@ -130,6 +130,13 @@ class SetFollowMode(Event):
     """Change how far presence spreads audibility (rule 1.9)."""
 
     mode: FollowMode
+
+
+@dataclass(frozen=True, slots=True)
+class SetIdleAttenuation(Event):
+    """Change how much volume idle zones keep as a background bed (rule 3.4)."""
+
+    mode: IdleAttenuation
 
 
 @dataclass(frozen=True, slots=True)

@@ -17,16 +17,32 @@ from custom_components.sonos_conductor.core.volume_math import (
 
 class TestRoomScale:
     def test_single_zone_is_unity(self) -> None:
-        assert room_scale(1, tv_active_in_room=False) == 1.0
+        assert room_scale([1.0], tv_active_in_room=False) == 1.0
 
     def test_zero_zones_is_unity(self) -> None:
-        assert room_scale(0, tv_active_in_room=False) == 1.0
+        assert room_scale([], tv_active_in_room=False) == 1.0
 
     def test_two_zones_share_loudness(self) -> None:
-        assert room_scale(2, tv_active_in_room=False) == pytest.approx(1 / math.sqrt(2))
+        assert room_scale([1.0, 1.0], tv_active_in_room=False) == pytest.approx(1 / math.sqrt(2))
 
     def test_tv_forces_unity(self) -> None:
-        assert room_scale(2, tv_active_in_room=True) == 1.0
+        assert room_scale([1.0, 1.0], tv_active_in_room=True) == 1.0
+
+    def test_idle_bed_weighs_by_power(self) -> None:
+        # One audible zone plus an idle bed at half level: 1/sqrt(1 + 0.25).
+        assert room_scale([1.0, 0.5], tv_active_in_room=False) == pytest.approx(1 / math.sqrt(1.25))
+
+    def test_never_boosts(self) -> None:
+        # A room quieter than one full zone keeps scale 1.0 (no boosting).
+        assert room_scale([0.5, 0.5], tv_active_in_room=False) == 1.0
+
+    def test_bed_preserves_total_room_power(self) -> None:
+        # The invariant behind the weighting: total perceived room power
+        # (sum of squared speaker levels relative to master x trim) stays
+        # exactly one full zone, whatever the bed level is.
+        for bed in (0.0, 0.25, 0.5, 1.0):
+            scale = room_scale([1.0, bed], tv_active_in_room=False)
+            assert (1.0 * scale) ** 2 + (bed * scale) ** 2 == pytest.approx(1.0)
 
 
 class TestMapping:
@@ -40,7 +56,7 @@ class TestMapping:
         master = 0.34
         for trim in (1.0, 1.1, 1.2):
             for zones in (1, 2, 3):
-                scale = room_scale(zones, tv_active_in_room=False)
+                scale = room_scale([1.0] * zones, tv_active_in_room=False)
                 volume = speaker_target(master, trim, scale)
                 assert implied_master(volume, trim, scale) == pytest.approx(master, abs=1e-9)
 

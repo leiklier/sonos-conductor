@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from math import sqrt
 
 #: Reports closer than this to a commanded value are considered equal
@@ -13,16 +14,23 @@ def clamp(value: float, low: float = 0.0, high: float = 1.0) -> float:
     return max(low, min(high, value))
 
 
-def room_scale(audible_zones_in_room: int, tv_active_in_room: bool) -> float:
+def room_scale(zone_levels: Iterable[float], tv_active_in_room: bool) -> float:
     """Loudness compensation for acoustically linked zones.
 
-    N zones sharing a room each play at 1/sqrt(N) so total perceived
-    loudness stays constant. While a TV plays in the room the scale is
-    forced to 1.0 to preserve a 1:1 Apple TV remote volume mapping.
+    Each zone contributes its relative level: 1.0 while audible, its
+    idle-bed fraction while idle (rule 3.4), 0.0 while silent. Perceived
+    total loudness follows the power sum of the levels, so the scale is
+    1/sqrt(sum of squared levels) — for N fully audible zones the classic
+    1/sqrt(N). The scale never boosts: a room summing to less than one full
+    zone keeps scale 1.0. While a TV plays in the room the scale is forced
+    to 1.0 to preserve a 1:1 Apple TV remote volume mapping.
     """
-    if tv_active_in_room or audible_zones_in_room <= 1:
+    if tv_active_in_room:
         return 1.0
-    return 1.0 / sqrt(audible_zones_in_room)
+    power = sum(level * level for level in zone_levels)
+    if power <= 1.0:
+        return 1.0
+    return 1.0 / sqrt(power)
 
 
 def speaker_target(master: float, trim: float, scale: float) -> float:

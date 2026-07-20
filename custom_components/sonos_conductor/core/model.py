@@ -75,6 +75,22 @@ class FollowMode(StrEnum):
     ALL_SPEAKERS = "all_speakers"  # any zone occupied wakes every zone
 
 
+class IdleAttenuation(StrEnum):
+    """How much volume an idle zone keeps as a background bed (rule 3.4).
+
+    Applies to zones that are not audible and not solo-suppressed: instead
+    of hard silence they keep a fraction of the level they would have if
+    audible (the fractions are the ``idle_*_level`` tunables). ``MAX`` is
+    full attenuation — idle zones are silent, the default and the pre-3.4
+    behavior. The bed is gated on home presence like the fallback (rule
+    1.8): a definitively empty home keeps idle zones silent.
+    """
+
+    GENTLE = "gentle"  # idle zones keep idle_gentle_level of their level
+    BALANCED = "balanced"  # idle zones keep idle_balanced_level
+    MAX = "max"  # idle zones are silent (default)
+
+
 @dataclass(frozen=True, slots=True)
 class SpeakerConfig:
     """A managed Sonos speaker."""
@@ -151,6 +167,11 @@ class Tunables:
     #: (rule 1.2): stepping out of a room you were settled in should not
     #: fade the music while you fetch something.
     hold_settled_scale: float = 4.0
+    #: Fraction of its would-be audible level an idle zone keeps while idle
+    #: attenuation is GENTLE (rule 3.4). 0 = silent, 1 = no attenuation.
+    idle_gentle_level: float = 0.5
+    #: Fraction kept while idle attenuation is BALANCED (rule 3.4).
+    idle_balanced_level: float = 0.25
 
 
 @dataclass(frozen=True, slots=True)
@@ -229,6 +250,8 @@ class EngineState:
     tv_solo_mode: TvSoloMode = TvSoloMode.OFF
     #: How far presence spreads audibility (rule 1.9). Published state.
     follow_mode: FollowMode = FollowMode.PER_ZONE
+    #: How much volume idle zones keep (rule 3.4). Published state.
+    idle_attenuation: IdleAttenuation = IdleAttenuation.MAX
     keep_grouped: bool = True
     #: Global night-mode volume ceiling engaged (rule 3.3). Published state:
     #: adapters read it, never derive it.
@@ -272,5 +295,7 @@ class InitialSnapshot:
     tv_solo_mode: TvSoloMode = TvSoloMode.OFF
     #: Follow mode at startup (rule 1.9); seeds like any flag (9.1).
     follow_mode: FollowMode = FollowMode.PER_ZONE
+    #: Idle attenuation at startup (rule 3.4); seeds like any flag (9.1).
+    idle_attenuation: IdleAttenuation = IdleAttenuation.MAX
     keep_grouped: bool = True
     night_mode: bool = False

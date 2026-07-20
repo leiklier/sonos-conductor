@@ -76,7 +76,9 @@
           "startup_tolerance": "Startup tolerance",
           "night_volume_cap": "Night volume cap",
           "hold_passing_scale": "Passing hold scale",
-          "hold_settled_scale": "Settled hold scale"
+          "hold_settled_scale": "Settled hold scale",
+          "idle_gentle_level": "Gentle idle level",
+          "idle_balanced_level": "Balanced idle level"
         },
         "data_description": {
           "fade_in": "Seconds to fade a zone in when it becomes active.",
@@ -90,7 +92,9 @@
           "startup_tolerance": "Volume divergence below which startup adopts the current volumes as-is instead of converging them.",
           "night_volume_cap": "Absolute volume ceiling for every speaker while night mode is active. Duck inputs with a lower cap still win.",
           "hold_passing_scale": "Hold-time multiplier when a zone's visit never rose above passing (needs a Presence Conductor room). 0.3 means a walk-through fades out after 30% of the normal hold time.",
-          "hold_settled_scale": "Hold-time multiplier after someone was settled in the zone (needs a Presence Conductor room). 4.0 means stepping out of a settled room keeps the music 4× the normal hold time."
+          "hold_settled_scale": "Hold-time multiplier after someone was settled in the zone (needs a Presence Conductor room). 4.0 means stepping out of a settled room keeps the music 4× the normal hold time.",
+          "idle_gentle_level": "Fraction of its normal level an idle zone keeps while the Idle attenuation select is set to Gentle. 0.5 = half the volume it would have if audible.",
+          "idle_balanced_level": "Fraction of its normal level an idle zone keeps while the Idle attenuation select is set to Balanced."
         }
       }
     },
@@ -181,7 +185,9 @@
           "startup_tolerance": "Startup tolerance",
           "night_volume_cap": "Night volume cap",
           "hold_passing_scale": "Passing hold scale",
-          "hold_settled_scale": "Settled hold scale"
+          "hold_settled_scale": "Settled hold scale",
+          "idle_gentle_level": "Gentle idle level",
+          "idle_balanced_level": "Balanced idle level"
         },
         "data_description": {
           "fade_in": "Seconds to fade a zone in when it becomes active.",
@@ -195,7 +201,9 @@
           "startup_tolerance": "Volume divergence below which startup adopts the current volumes as-is instead of converging them.",
           "night_volume_cap": "Absolute volume ceiling for every speaker while night mode is active. Duck inputs with a lower cap still win.",
           "hold_passing_scale": "Hold-time multiplier when a zone's visit never rose above passing (needs a Presence Conductor room). 0.3 means a walk-through fades out after 30% of the normal hold time.",
-          "hold_settled_scale": "Hold-time multiplier after someone was settled in the zone (needs a Presence Conductor room). 4.0 means stepping out of a settled room keeps the music 4× the normal hold time."
+          "hold_settled_scale": "Hold-time multiplier after someone was settled in the zone (needs a Presence Conductor room). 4.0 means stepping out of a settled room keeps the music 4× the normal hold time.",
+          "idle_gentle_level": "Fraction of its normal level an idle zone keeps while the Idle attenuation select is set to Gentle. 0.5 = half the volume it would have if audible.",
+          "idle_balanced_level": "Fraction of its normal level an idle zone keeps while the Idle attenuation select is set to Balanced."
         }
       },
       "media": {
@@ -230,6 +238,13 @@
           "per_zone": "Per zone",
           "per_room": "Per room",
           "all_speakers": "All speakers"
+        }
+      },
+      "idle_attenuation": {
+        "state": {
+          "gentle": "Gentle",
+          "balanced": "Balanced",
+          "max": "Max (silent)"
         }
       }
     }

@@ -43,6 +43,7 @@ from .events import (
     PlaybackChanged,
     SetEnabled,
     SetFollowMode,
+    SetIdleAttenuation,
     SetKeepGrouped,
     SetMaster,
     SetMute,
@@ -96,6 +97,7 @@ class ConductorEngine:
         state.enabled = snapshot.enabled
         state.tv_solo_mode = snapshot.tv_solo_mode
         state.follow_mode = snapshot.follow_mode  # 1.9 seeds like any flag (9.1)
+        state.idle_attenuation = snapshot.idle_attenuation  # 3.4 seeds like any flag (9.1)
         state.keep_grouped = snapshot.keep_grouped
         state.night_mode = snapshot.night_mode  # 3.3 seeds like any flag (9.1)
         for speaker in self.config.speakers:
@@ -220,6 +222,8 @@ class ConductorEngine:
                 zones.on_set_tv_solo_mode(self, event, now, plan)
             case SetFollowMode():
                 zones.on_set_follow_mode(self, event, now, plan)
+            case SetIdleAttenuation():
+                audio.on_set_idle_attenuation(self, event, now, plan)
             case SetKeepGrouped():
                 grouping.on_set_keep_grouped(self, event, plan)
             case SetTrim():

@@ -20,6 +20,7 @@ from custom_components.sonos_conductor.const import DOMAIN
 from custom_components.sonos_conductor.core.events import (
     SetEnabled,
     SetFollowMode,
+    SetIdleAttenuation,
     SetKeepGrouped,
     SetMaster,
     SetMute,
@@ -27,7 +28,12 @@ from custom_components.sonos_conductor.core.events import (
     SetTrim,
     SetTvSoloMode,
 )
-from custom_components.sonos_conductor.core.model import FollowMode, TvSoloMode, ZonePhase
+from custom_components.sonos_conductor.core.model import (
+    FollowMode,
+    IdleAttenuation,
+    TvSoloMode,
+    ZonePhase,
+)
 from tests.test_controller import MOVE, OPTIONS, SOFA, set_speaker, setup_conductor
 
 
@@ -361,6 +367,53 @@ async def test_follow_mode_hides_per_room_without_shared_rooms(
     assert state.attributes["options"] == ["per_zone", "all_speakers"]
     assert state.state == "per_zone"
     assert fake.events_of(SetFollowMode) == []  # per_room restore: invalid now
+
+
+# ---------------------------------------------------------------------------
+# idle_attenuation select
+# ---------------------------------------------------------------------------
+
+
+async def test_idle_attenuation_select_options_state_and_dispatch(
+    hass: HomeAssistant, monkeypatch
+) -> None:
+    entry, controller, fake = await setup_conductor(hass, monkeypatch)
+    select = entity_id_for(hass, "select", f"{entry.entry_id}_idle_attenuation")
+    assert select == "select.sonos_conductor_idle_attenuation"
+
+    state = hass.states.get(select)
+    assert state.state == "max"  # engine default: idle zones fully silent
+    assert state.attributes["options"] == ["gentle", "balanced", "max"]
+
+    await hass.services.async_call(
+        "select", "select_option", {"entity_id": select, "option": "gentle"}, blocking=True
+    )
+    await hass.async_block_till_done()
+    assert fake.events_of(SetIdleAttenuation) == [SetIdleAttenuation(IdleAttenuation.GENTLE)]
+
+    # Engine state drives the rendered option via the dispatcher signal.
+    fake.state.idle_attenuation = IdleAttenuation.BALANCED
+    async_dispatcher_send(hass, controller.signal)
+    await hass.async_block_till_done()
+    assert hass.states.get(select).state == "balanced"
+
+
+async def test_idle_attenuation_select_restores_mode(hass: HomeAssistant, monkeypatch) -> None:
+    """A restored option is pushed back into the engine as SetIdleAttenuation."""
+    mock_restore_cache(hass, (State("select.sonos_conductor_idle_attenuation", "gentle"),))
+    _entry, _controller, fake = await setup_conductor(hass, monkeypatch)
+    assert fake.events_of(SetIdleAttenuation) == [SetIdleAttenuation(IdleAttenuation.GENTLE)]
+
+
+async def test_idle_attenuation_select_ignores_invalid_restore(
+    hass: HomeAssistant, monkeypatch
+) -> None:
+    """Unknown/invalid restored values leave the engine at MAX."""
+    mock_restore_cache(hass, (State("select.sonos_conductor_idle_attenuation", "unavailable"),))
+    entry, _controller, fake = await setup_conductor(hass, monkeypatch)
+    assert fake.events_of(SetIdleAttenuation) == []
+    select = entity_id_for(hass, "select", f"{entry.entry_id}_idle_attenuation")
+    assert hass.states.get(select).state == "max"
 
 
 # ---------------------------------------------------------------------------

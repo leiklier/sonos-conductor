@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from . import timers, volume_math
-from .model import TvSoloMode, ZonePhase
+from .model import IdleAttenuation, TvSoloMode, ZonePhase
 
 if TYPE_CHECKING:
     from .engine import ConductorEngine
@@ -56,7 +56,8 @@ def desired(engine: ConductorEngine, speaker_id: str) -> float | None:
         return None  # unmanaged speaker: never touch it
     if engine.state.zones[zone.zone_id].phase is ZonePhase.STANDALONE:
         return None
-    if not is_audible(engine, zone.zone_id):
+    level = zone_level(engine, zone.zone_id)
+    if level <= 0.0:
         return 0.0
     target = volume_math.speaker_target(
         engine.state.master, engine._trims[speaker_id], room_scale(engine, zone.room_id)
@@ -66,7 +67,10 @@ def desired(engine: ConductorEngine, speaker_id: str) -> float | None:
         target = min(target, cap)
     if engine.state.night_mode:  # night ceiling (rule 3.3); duck below it wins
         target = min(target, engine.config.tunables.night_volume_cap)
-    return target
+    # The bed is a fraction of the *capped* active target (rule 3.4): a
+    # gentle bed stays at half the active level even when night mode or a
+    # duck has compressed everything toward its cap.
+    return level * target
 
 
 def is_audible(engine: ConductorEngine, zone_id: str) -> bool:
@@ -77,9 +81,38 @@ def is_audible(engine: ConductorEngine, zone_id: str) -> bool:
 
 
 def room_scale(engine: ConductorEngine, room_id: str) -> float:
-    audible = [z for z in engine.config.zones_in_room(room_id) if is_audible(engine, z.zone_id)]
-    tv = any(engine.state.zones[z.zone_id].tv_playing for z in audible)
-    return volume_math.room_scale(len(audible), tv)
+    zones_in_room = engine.config.zones_in_room(room_id)
+    tv = any(
+        engine.state.zones[z.zone_id].tv_playing
+        for z in zones_in_room
+        if is_audible(engine, z.zone_id)
+    )
+    return volume_math.room_scale((zone_level(engine, z.zone_id) for z in zones_in_room), tv)
+
+
+def zone_level(engine: ConductorEngine, zone_id: str) -> float:
+    """A zone's relative volume level per spec section 0: 1.0 while audible,
+    its idle-bed fraction while idle (rule 3.4), 0.0 while silent."""
+    if is_audible(engine, zone_id):
+        return 1.0
+    if engine.state.zones[zone_id].phase is ZonePhase.STANDALONE:
+        return 0.0  # invisible to room-scale counting (2.3)
+    return idle_level(engine, zone_id)
+
+
+def idle_level(engine: ConductorEngine, zone_id: str) -> float:
+    """The idle-bed fraction for a non-audible zone (rule 3.4)."""
+    state = engine.state
+    if zone_id in state.suppressed:
+        return 0.0  # TV solo wins on top of the bed (6.2)
+    if state.anyone_home is False:
+        return 0.0  # a definitively empty home is silent (1.8)
+    tunables = engine.config.tunables
+    if state.idle_attenuation is IdleAttenuation.GENTLE:
+        return volume_math.clamp(tunables.idle_gentle_level)
+    if state.idle_attenuation is IdleAttenuation.BALANCED:
+        return volume_math.clamp(tunables.idle_balanced_level)
+    return 0.0  # MAX: full attenuation (default)
 
 
 def duck_cap(engine: ConductorEngine) -> float | None:

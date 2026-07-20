@@ -17,7 +17,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .const import DOMAIN
 from .controller import ConductorEntity, SonosConductorController
-from .core.model import ConductorConfig, EngineState, ZoneConfig, ZonePhase
+from .core.model import ConductorConfig, EngineState, IdleAttenuation, ZoneConfig, ZonePhase
 from .core.volume_math import room_scale, speaker_target
 
 AUDIBLE_PHASES = (ZonePhase.ACTIVE, ZonePhase.RELEASING)
@@ -33,10 +33,29 @@ def _is_audible(state: EngineState, zone: ZoneConfig) -> bool:
     )
 
 
+def _zone_level(config: ConductorConfig, state: EngineState, zone: ZoneConfig) -> float:
+    """The engine's zone-level rule (spec section 0 / rule 3.4) over its
+    published state: 1.0 audible, the idle-bed fraction while idle, 0 silent."""
+    if _is_audible(state, zone):
+        return 1.0
+    zone_state = state.zones.get(zone.zone_id)
+    if zone_state is None or zone_state.phase is ZonePhase.STANDALONE:
+        return 0.0
+    if zone.zone_id in state.suppressed or state.anyone_home is False:
+        return 0.0
+    if state.idle_attenuation is IdleAttenuation.GENTLE:
+        return config.tunables.idle_gentle_level
+    if state.idle_attenuation is IdleAttenuation.BALANCED:
+        return config.tunables.idle_balanced_level
+    return 0.0
+
+
 def _room_scale_for(config: ConductorConfig, state: EngineState, room_id: str) -> float:
-    audible = [z for z in config.zones_in_room(room_id) if _is_audible(state, z)]
-    tv_active = any(state.zones[z.zone_id].tv_playing for z in audible)
-    return room_scale(len(audible), tv_active)
+    zones_in_room = config.zones_in_room(room_id)
+    tv_active = any(
+        state.zones[z.zone_id].tv_playing for z in zones_in_room if _is_audible(state, z)
+    )
+    return room_scale((_zone_level(config, state, z) for z in zones_in_room), tv_active)
 
 
 async def async_setup_entry(
@@ -77,7 +96,7 @@ class SonosConductorZoneSensor(ConductorEntity, BinarySensorEntity):
             return {"room": self._zone.room_id}
         scale = _room_scale_for(config, state, self._zone.room_id)
         trim = config.speaker(self._zone.speaker_id).trim
-        audible = _is_audible(state, self._zone)
+        level = _zone_level(config, state, self._zone)
         return {
             "phase": str(zone_state.phase),
             "occupied": zone_state.occupied,
@@ -88,5 +107,5 @@ class SonosConductorZoneSensor(ConductorEntity, BinarySensorEntity):
             else None,
             "room": self._zone.room_id,
             "room_scale": scale,
-            "target_volume": speaker_target(state.master, trim, scale) if audible else 0.0,
+            "target_volume": level * speaker_target(state.master, trim, scale),
         }
