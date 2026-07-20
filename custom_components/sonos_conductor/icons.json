@@ -44,6 +44,14 @@
           "per_room": "mdi:account-group",
           "all_speakers": "mdi:speaker-multiple"
         }
+      },
+      "idle_attenuation": {
+        "default": "mdi:volume-off",
+        "state": {
+          "gentle": "mdi:volume-medium",
+          "balanced": "mdi:volume-low",
+          "max": "mdi:volume-off"
+        }
       }
     },
     "binary_sensor": {

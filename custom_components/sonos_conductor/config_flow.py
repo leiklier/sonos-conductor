@@ -76,6 +76,8 @@ _TUNABLE_UI: dict[str, tuple[float, float, float, str | None]] = {
     "night_volume_cap": (0.0, 1.0, 0.01, None),
     "hold_passing_scale": (0.0, 2.0, 0.05, None),
     "hold_settled_scale": (1.0, 10.0, 0.5, None),
+    "idle_gentle_level": (0.0, 1.0, 0.05, None),
+    "idle_balanced_level": (0.0, 1.0, 0.05, None),
 }
 _TUNABLE_FALLBACK_UI: tuple[float, float, float, str | None] = (0, 600, 0.01, None)
 

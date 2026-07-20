@@ -1,6 +1,6 @@
-"""Conductor selects: TV-solo mode and follow mode.
+"""Conductor selects: TV-solo mode, follow mode and idle attenuation.
 
-Both are engine modes the user picks and rarely changes, so each is a
+All are engine modes the user picks and rarely changes, so each is a
 ``RestoreEntity`` select that seeds the engine default and pushes a restored
 value back through the controller queue after startup reconciliation.
 """
@@ -18,8 +18,8 @@ from homeassistant.helpers.restore_state import RestoreEntity
 
 from .const import DOMAIN
 from .controller import ConductorEntity, SonosConductorController
-from .core.events import SetFollowMode, SetTvSoloMode
-from .core.model import FollowMode, TvSoloMode
+from .core.events import SetFollowMode, SetIdleAttenuation, SetTvSoloMode
+from .core.model import FollowMode, IdleAttenuation, TvSoloMode
 
 
 async def async_setup_entry(
@@ -30,7 +30,11 @@ async def async_setup_entry(
     if controller is None:
         return
     async_add_entities(
-        [SonosConductorTvSoloSelect(controller), SonosConductorFollowModeSelect(controller)]
+        [
+            SonosConductorTvSoloSelect(controller),
+            SonosConductorFollowModeSelect(controller),
+            SonosConductorIdleAttenuationSelect(controller),
+        ]
     )
 
 
@@ -118,3 +122,42 @@ class SonosConductorFollowModeSelect(ConductorEntity, SelectEntity, RestoreEntit
         mode = FollowMode(last.state)
         if mode is not self.engine_state.follow_mode:
             self.controller.submit(SetFollowMode(mode))
+
+
+class SonosConductorIdleAttenuationSelect(ConductorEntity, SelectEntity, RestoreEntity):
+    """How much volume idle zones keep, restored across restarts (rule 3.4).
+
+    The engine seeds ``idle_attenuation`` to MAX (idle zones fully silent —
+    the legacy behavior); a valid restored option is pushed back through the
+    controller queue as a ``SetIdleAttenuation`` event (drained after startup
+    reconciliation, like the TV-solo select). An unknown or invalid restored
+    state leaves the engine at MAX.
+    """
+
+    _attr_translation_key = "idle_attenuation"
+    # Hardcoded English name like every sibling entity: keeps the generated
+    # entity id stable (select.sonos_conductor_idle_attenuation) on any HA
+    # language.
+    _attr_name = "Idle attenuation"
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_options: ClassVar[list[str]] = [mode.value for mode in IdleAttenuation]
+
+    def __init__(self, controller: SonosConductorController) -> None:
+        super().__init__(controller)
+        self._attr_unique_id = f"{controller.entry.entry_id}_idle_attenuation"
+
+    @property
+    def current_option(self) -> str:
+        return self.engine_state.idle_attenuation.value
+
+    async def async_select_option(self, option: str) -> None:
+        self.controller.submit(SetIdleAttenuation(IdleAttenuation(option)))
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        last = await self.async_get_last_state()
+        if last is None or last.state not in self._attr_options:
+            return  # nothing restored (or invalid): keep the engine default
+        mode = IdleAttenuation(last.state)
+        if mode is not self.engine_state.idle_attenuation:
+            self.controller.submit(SetIdleAttenuation(mode))

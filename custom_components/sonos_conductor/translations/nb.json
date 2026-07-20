@@ -76,7 +76,9 @@
           "startup_tolerance": "Oppstartstoleranse",
           "night_volume_cap": "Maks volum i nattmodus",
           "hold_passing_scale": "Holdetidsskala for gjennomgang",
-          "hold_settled_scale": "Holdetidsskala etter ro"
+          "hold_settled_scale": "Holdetidsskala etter ro",
+          "idle_gentle_level": "Mildt hvilenivå",
+          "idle_balanced_level": "Balansert hvilenivå"
         },
         "data_description": {
           "fade_in": "Sekunder brukt på å tone inn en sone når den blir aktiv.",
@@ -90,7 +92,9 @@
           "startup_tolerance": "Volumavvik under denne grensen gjør at oppstarten beholder gjeldende volumer som de er, i stedet for å jevne dem ut.",
           "night_volume_cap": "Absolutt volumtak for alle høyttalere mens nattmodus er aktiv. Innganger for volumsenking med lavere grense gjelder fortsatt.",
           "hold_passing_scale": "Holdetidsmultiplikator når et besøk i sonen aldri ble mer enn en gjennomgang (krever et Presence Conductor-rom). 0,3 betyr at en gjennomgang tones ut etter 30 % av normal holdetid.",
-          "hold_settled_scale": "Holdetidsmultiplikator etter at noen hadde slått seg til ro i sonen (krever et Presence Conductor-rom). 4,0 betyr at musikken henger igjen 4× normal holdetid når man går ut av et slikt rom."
+          "hold_settled_scale": "Holdetidsmultiplikator etter at noen hadde slått seg til ro i sonen (krever et Presence Conductor-rom). 4,0 betyr at musikken henger igjen 4× normal holdetid når man går ut av et slikt rom.",
+          "idle_gentle_level": "Andelen av normalt nivå en inaktiv sone beholder når Idle attenuation-velgeren står på Mild. 0,5 = halvparten av volumet den ville hatt som hørbar.",
+          "idle_balanced_level": "Andelen av normalt nivå en inaktiv sone beholder når Idle attenuation-velgeren står på Balansert."
         }
       }
     },
@@ -181,7 +185,9 @@
           "startup_tolerance": "Oppstartstoleranse",
           "night_volume_cap": "Maks volum i nattmodus",
           "hold_passing_scale": "Holdetidsskala for gjennomgang",
-          "hold_settled_scale": "Holdetidsskala etter ro"
+          "hold_settled_scale": "Holdetidsskala etter ro",
+          "idle_gentle_level": "Mildt hvilenivå",
+          "idle_balanced_level": "Balansert hvilenivå"
         },
         "data_description": {
           "fade_in": "Sekunder brukt på å tone inn en sone når den blir aktiv.",
@@ -195,7 +201,9 @@
           "startup_tolerance": "Volumavvik under denne grensen gjør at oppstarten beholder gjeldende volumer som de er, i stedet for å jevne dem ut.",
           "night_volume_cap": "Absolutt volumtak for alle høyttalere mens nattmodus er aktiv. Innganger for volumsenking med lavere grense gjelder fortsatt.",
           "hold_passing_scale": "Holdetidsmultiplikator når et besøk i sonen aldri ble mer enn en gjennomgang (krever et Presence Conductor-rom). 0,3 betyr at en gjennomgang tones ut etter 30 % av normal holdetid.",
-          "hold_settled_scale": "Holdetidsmultiplikator etter at noen hadde slått seg til ro i sonen (krever et Presence Conductor-rom). 4,0 betyr at musikken henger igjen 4× normal holdetid når man går ut av et slikt rom."
+          "hold_settled_scale": "Holdetidsmultiplikator etter at noen hadde slått seg til ro i sonen (krever et Presence Conductor-rom). 4,0 betyr at musikken henger igjen 4× normal holdetid når man går ut av et slikt rom.",
+          "idle_gentle_level": "Andelen av normalt nivå en inaktiv sone beholder når Idle attenuation-velgeren står på Mild. 0,5 = halvparten av volumet den ville hatt som hørbar.",
+          "idle_balanced_level": "Andelen av normalt nivå en inaktiv sone beholder når Idle attenuation-velgeren står på Balansert."
         }
       },
       "media": {
@@ -230,6 +238,13 @@
           "per_zone": "Per sone",
           "per_room": "Per rom",
           "all_speakers": "Alle høyttalere"
+        }
+      },
+      "idle_attenuation": {
+        "state": {
+          "gentle": "Mild",
+          "balanced": "Balansert",
+          "max": "Maks (stille)"
         }
       }
     }
