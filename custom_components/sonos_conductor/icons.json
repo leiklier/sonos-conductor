@@ -9,9 +9,6 @@
       }
     },
     "number": {
-      "master_volume": {
-        "default": "mdi:volume-high"
-      },
       "trim": {
         "default": "mdi:tune-vertical"
       }
@@ -21,13 +18,6 @@
         "default": "mdi:play-circle",
         "state": {
           "off": "mdi:pause-circle"
-        }
-      },
-      "mute": {
-        "default": "mdi:volume-high",
-        "state": {
-          "on": "mdi:volume-off",
-          "off": "mdi:volume-high"
         }
       },
       "keep_grouped": {
@@ -45,6 +35,14 @@
         "default": "mdi:television-speaker",
         "state": {
           "off": "mdi:television-speaker-off"
+        }
+      },
+      "follow_mode": {
+        "default": "mdi:account-multiple",
+        "state": {
+          "per_zone": "mdi:account",
+          "per_room": "mdi:account-group",
+          "all_speakers": "mdi:speaker-multiple"
         }
       }
     },

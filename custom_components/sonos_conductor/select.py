@@ -1,4 +1,9 @@
-"""Conductor selects: the TV-solo mode (off / same_room / tv_zone)."""
+"""Conductor selects: TV-solo mode and follow mode.
+
+Both are engine modes the user picks and rarely changes, so each is a
+``RestoreEntity`` select that seeds the engine default and pushes a restored
+value back through the controller queue after startup reconciliation.
+"""
 
 from __future__ import annotations
 
@@ -13,8 +18,8 @@ from homeassistant.helpers.restore_state import RestoreEntity
 
 from .const import DOMAIN
 from .controller import ConductorEntity, SonosConductorController
-from .core.events import SetTvSoloMode
-from .core.model import TvSoloMode
+from .core.events import SetFollowMode, SetTvSoloMode
+from .core.model import FollowMode, TvSoloMode
 
 
 async def async_setup_entry(
@@ -24,7 +29,9 @@ async def async_setup_entry(
     controller: SonosConductorController | None = hass.data[DOMAIN][entry.entry_id]
     if controller is None:
         return
-    async_add_entities([SonosConductorTvSoloSelect(controller)])
+    async_add_entities(
+        [SonosConductorTvSoloSelect(controller), SonosConductorFollowModeSelect(controller)]
+    )
 
 
 class SonosConductorTvSoloSelect(ConductorEntity, SelectEntity, RestoreEntity):
@@ -62,3 +69,52 @@ class SonosConductorTvSoloSelect(ConductorEntity, SelectEntity, RestoreEntity):
         mode = TvSoloMode(last.state)
         if mode is not self.engine_state.tv_solo_mode:
             self.controller.submit(SetTvSoloMode(mode))
+
+
+class SonosConductorFollowModeSelect(ConductorEntity, SelectEntity, RestoreEntity):
+    """The engine's follow mode, restored across restarts (rule 1.9).
+
+    The engine seeds ``follow_mode`` to PER_ZONE; a valid restored option is
+    pushed back through the controller queue as a ``SetFollowMode`` event
+    (drained after startup reconciliation, like the TV-solo select). An
+    unknown or invalid restored state leaves the engine at PER_ZONE.
+
+    PER_ROOM is only offered when at least two zones share an acoustic room —
+    with every zone in its own room it would behave exactly like PER_ZONE, so
+    listing it would just be a redundant choice. (The engine accepts the mode
+    regardless; only the UI hides it, and a restored ``per_room`` on such a
+    topology falls back to the engine default via the invalid-restore path.)
+    """
+
+    _attr_translation_key = "follow_mode"
+    # Hardcoded English name like every sibling entity: keeps the generated
+    # entity id stable (select.sonos_conductor_follow_mode) on any HA language.
+    _attr_name = "Follow mode"
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(self, controller: SonosConductorController) -> None:
+        super().__init__(controller)
+        self._attr_unique_id = f"{controller.entry.entry_id}_follow_mode"
+        rooms = [zone.room_id for zone in controller.config.zones]
+        modes = (
+            list(FollowMode)
+            if len(rooms) != len(set(rooms))  # some room hosts >= 2 zones
+            else [FollowMode.PER_ZONE, FollowMode.ALL_SPEAKERS]
+        )
+        self._attr_options = [mode.value for mode in modes]
+
+    @property
+    def current_option(self) -> str:
+        return self.engine_state.follow_mode.value
+
+    async def async_select_option(self, option: str) -> None:
+        self.controller.submit(SetFollowMode(FollowMode(option)))
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        last = await self.async_get_last_state()
+        if last is None or last.state not in self._attr_options:
+            return  # nothing restored (or invalid): keep the engine default
+        mode = FollowMode(last.state)
+        if mode is not self.engine_state.follow_mode:
+            self.controller.submit(SetFollowMode(mode))

@@ -40,6 +40,11 @@ Reconciliation is *the* only way volumes are changed. Every event handler is
 
 ## 1. Zone lifecycle
 
+Zone activation is driven by **effective occupancy** (rule 1.4), widened by
+the **follow mode** (rule 1.9). Where a rule below says "occupied / TV", read
+it as `effective_occupied(zone)` — the follow mode decides how far a zone's
+presence reaches.
+
 1.1 `OccupancyChanged(occupied=True)`: IDLE→ACTIVE (emit `CancelTimer` if a
     release timer could be pending — cancel is idempotent), RELEASING→ACTIVE
     (cancel hold timer; **no volume effect** — the speaker never moved).
@@ -98,7 +103,51 @@ Reconciliation is *the* only way volumes are changed. Every event handler is
     Zones audible on their own merits (occupied / TV) are unaffected.
     When presence returns (True or None) and nothing is audible, forcing
     resumes (fade-in): music greets whoever comes home. `None` (no input
-    configured, estimator blind) behaves as present — fail-safe.
+    configured, estimator blind) behaves as present — fail-safe. In
+    ALL_SPEAKERS follow mode, `anyone_home` additionally feeds effective
+    occupancy itself (rule 1.9).
+
+1.9 **Follow mode** (`follow_mode ∈ {PER_ZONE, PER_ROOM, ALL_SPEAKERS}`,
+    default `PER_ZONE`, published state, seeded from the snapshot like any
+    flag per 9.1). It widens **effective occupancy** — the presence that
+    makes a zone ACTIVE. Define `self_present(z) = z.occupied ∨ z.tv_playing`
+    (rule 1.4). Then:
+
+    | mode | `effective_occupied(zone)` |
+    |---|---|
+    | PER_ZONE | `self_present(zone)` (legacy behavior) |
+    | PER_ROOM | any zone in `zone.room` has `self_present` |
+    | ALL_SPEAKERS | `anyone_home is not False`, or any zone has `self_present` |
+
+    A STANDALONE zone is never made audible (its speaker left the system),
+    but its own `self_present` still counts as a contributor — occupancy is a
+    property of the room, not the speaker. Because a change in one zone can
+    now flip its neighbors' effective occupancy, `OccupancyChanged` /
+    `TvPlayingChanged` re-run the IDLE/ACTIVE/RELEASING transitions (rules
+    1.1–1.4) for every zone in the *affected set* (the changed zone in
+    PER_ZONE; its room in PER_ROOM; all zones in ALL_SPEAKERS), and in
+    ALL_SPEAKERS a `HomePresenceChanged` re-runs them for all zones too.
+
+    ALL_SPEAKERS means sound in every zone *while someone is home*, gated
+    by home-level presence. Rule 1.8's input doubles as presence anywhere —
+    someone home but outside every zone (bedroom, bathroom) keeps the whole
+    house playing — and its fail-safe convention carries over: `None` (no
+    input configured, estimator blind) behaves as present, so a blind
+    estimator keeps the house on rather than silencing it. Only a
+    definitive `anyone_home is False` empties the house: every zone
+    releases through its normal hold and the empty-home rule (1.8) keeps
+    the fallback unforced. Consequence: without a home-presence input the
+    mode keeps every zone audible indefinitely — the whole-house analogue
+    of the fallback's "music never dies"; configure an anyone-home sensor
+    to get empty-home silence. Follow mode is orthogonal to TV solo (rule
+    6.2): solo suppression applies *on top of* whatever effective occupancy
+    makes audible, so a playing TV can still silence rooms even in
+    ALL_SPEAKERS.
+
+    `SetFollowMode(m)`: if changed, re-derive every zone from current inputs
+    and reconcile (`rebalance_fade`). Widening fades newly-woken zones in;
+    narrowing lets zones that lose their trigger release through the normal
+    hold/fade-out path. While disabled: recompute phases only (8.1).
 
 ## 2. Dock / standalone
 
@@ -240,7 +289,10 @@ Reconciliation is *the* only way volumes are changed. Every event handler is
     (no hold timers pending — an unoccupied zone starts IDLE, not RELEASING).
     Activity and `anyone_home` seed like any flag; a zone seeded audible
     starts its episode at the seeded activity (rule 1.7), and fallback
-    forcing respects rule 1.8 at seed time.
+    forcing respects rule 1.8 at seed time. `follow_mode` seeds like any flag;
+    effective occupancy (1.9) is resolved across all zones, so a zone can seed
+    ACTIVE because a room-mate (PER_ROOM) or any zone (ALL_SPEAKERS) is
+    occupied.
 
 9.2 Master: use `snapshot.master` if given; else the **median** of
     `implied_master(volume, trim, room_scale)` over audible zones with a
@@ -292,3 +344,7 @@ Reconciliation is *the* only way volumes are changed. Every event handler is
 - R11 Night mode on → knob turned above the cap → exactly one corrective
   ramp back to the cap (no debounce timer), master untouched; a repeat
   report of the cap value itself is discarded — no ping-pong.
+- R12 Follow mode ALL_SPEAKERS + tv_solo TV_ZONE: someone enters the kitchen
+  while the TV plays → every zone's FSM is ACTIVE, yet only the TV zone is
+  audible (solo suppression overrides the follow mode). PER_ROOM: occupancy
+  in one room wakes its room-mates but never the other room.

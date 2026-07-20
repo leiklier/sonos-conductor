@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from math import sqrt
 
 import pytest
@@ -18,6 +19,7 @@ from pytest_homeassistant_custom_component.common import (
 from custom_components.sonos_conductor.const import DOMAIN
 from custom_components.sonos_conductor.core.events import (
     SetEnabled,
+    SetFollowMode,
     SetKeepGrouped,
     SetMaster,
     SetMute,
@@ -25,7 +27,7 @@ from custom_components.sonos_conductor.core.events import (
     SetTrim,
     SetTvSoloMode,
 )
-from custom_components.sonos_conductor.core.model import TvSoloMode, ZonePhase
+from custom_components.sonos_conductor.core.model import FollowMode, TvSoloMode, ZonePhase
 from tests.test_controller import MOVE, OPTIONS, SOFA, set_speaker, setup_conductor
 
 
@@ -129,23 +131,11 @@ async def test_media_player_transport_forwards_to_leader(hass: HomeAssistant, mo
 # ---------------------------------------------------------------------------
 
 
-async def test_master_number(hass: HomeAssistant, monkeypatch) -> None:
-    entry, controller, fake = await setup_conductor(hass, monkeypatch)
-    number = entity_id_for(hass, "number", f"{entry.entry_id}_master")
-
-    assert hass.states.get(number).state == "0.2"
-
-    await hass.services.async_call(
-        "number", "set_value", {"entity_id": number, "value": 0.35}, blocking=True
-    )
-    await hass.async_block_till_done()
-    assert fake.events_of(SetMaster)[-1] == SetMaster(0.35, source="number")
-
-    # Engine-side change propagates via the dispatcher signal.
-    fake.state.master = 0.35
-    async_dispatcher_send(hass, controller.signal)
-    await hass.async_block_till_done()
-    assert hass.states.get(number).state == "0.35"
+async def test_master_number_is_gone(hass: HomeAssistant, monkeypatch) -> None:
+    """The standalone master-volume number was folded into the media player."""
+    entry, _controller, _fake = await setup_conductor(hass, monkeypatch)
+    registry = er.async_get(hass)
+    assert registry.async_get_entity_id("number", DOMAIN, f"{entry.entry_id}_master") is None
 
 
 async def test_trim_numbers(hass: HomeAssistant, monkeypatch) -> None:
@@ -171,27 +161,23 @@ async def test_switches_mirror_state_and_submit_events(hass: HomeAssistant, monk
     entry, controller, fake = await setup_conductor(hass, monkeypatch)
 
     enabled = entity_id_for(hass, "switch", f"{entry.entry_id}_enabled")
-    mute = entity_id_for(hass, "switch", f"{entry.entry_id}_mute")
     keep_grouped = entity_id_for(hass, "switch", f"{entry.entry_id}_keep_grouped")
 
     assert hass.states.get(enabled).state == "on"
-    assert hass.states.get(mute).state == "off"
     assert hass.states.get(keep_grouped).state == "on"
 
     await hass.services.async_call("switch", "turn_off", {"entity_id": enabled}, blocking=True)
-    await hass.services.async_call("switch", "turn_on", {"entity_id": mute}, blocking=True)
     await hass.services.async_call("switch", "turn_off", {"entity_id": keep_grouped}, blocking=True)
     await hass.async_block_till_done()
 
     assert fake.events_of(SetEnabled) == [SetEnabled(False)]
-    assert fake.events_of(SetMute) == [SetMute(True, source="switch")]
     assert fake.events_of(SetKeepGrouped) == [SetKeepGrouped(False)]
 
     # Engine state drives is_on via the dispatcher signal.
-    fake.state.muted = True
+    fake.state.enabled = False
     async_dispatcher_send(hass, controller.signal)
     await hass.async_block_till_done()
-    assert hass.states.get(mute).state == "on"
+    assert hass.states.get(enabled).state == "off"
 
 
 async def test_night_mode_switch_mirrors_state_and_submits(
@@ -244,18 +230,16 @@ async def test_night_mode_switch_restore_matching_state_is_silent(
 
 
 async def test_other_switches_do_not_restore(hass: HomeAssistant, monkeypatch) -> None:
-    """Only night_mode restores; enabled/mute/keep_grouped keep engine defaults."""
+    """Only night_mode restores; enabled/keep_grouped keep engine defaults."""
     mock_restore_cache(
         hass,
         (
             State("switch.sonos_conductor_enabled", "off"),
-            State("switch.sonos_conductor_mute", "on"),
             State("switch.sonos_conductor_keep_grouped", "off"),
         ),
     )
     _entry, _controller, fake = await setup_conductor(hass, monkeypatch)
     assert fake.events_of(SetEnabled) == []
-    assert fake.events_of(SetMute) == []
     assert fake.events_of(SetKeepGrouped) == []
 
 
@@ -264,6 +248,13 @@ async def test_tv_solo_switch_is_gone(hass: HomeAssistant, monkeypatch) -> None:
     entry, _controller, _fake = await setup_conductor(hass, monkeypatch)
     registry = er.async_get(hass)
     assert registry.async_get_entity_id("switch", DOMAIN, f"{entry.entry_id}_tv_solo") is None
+
+
+async def test_mute_switch_is_gone(hass: HomeAssistant, monkeypatch) -> None:
+    """Mute moved onto the media player; no standalone switch duplicates it."""
+    entry, _controller, _fake = await setup_conductor(hass, monkeypatch)
+    registry = er.async_get(hass)
+    assert registry.async_get_entity_id("switch", DOMAIN, f"{entry.entry_id}_mute") is None
 
 
 # ---------------------------------------------------------------------------
@@ -307,6 +298,69 @@ async def test_tv_solo_select_ignores_invalid_restore(hass: HomeAssistant, monke
     assert fake.events_of(SetTvSoloMode) == []
     select = entity_id_for(hass, "select", f"{entry.entry_id}_tv_solo")
     assert hass.states.get(select).state == "off"
+
+
+# ---------------------------------------------------------------------------
+# follow_mode select
+# ---------------------------------------------------------------------------
+
+
+async def test_follow_mode_select_options_state_and_dispatch(
+    hass: HomeAssistant, monkeypatch
+) -> None:
+    entry, controller, fake = await setup_conductor(hass, monkeypatch)
+    select = entity_id_for(hass, "select", f"{entry.entry_id}_follow_mode")
+    assert select == "select.sonos_conductor_follow_mode"
+
+    state = hass.states.get(select)
+    assert state.state == "per_zone"  # engine default
+    assert state.attributes["options"] == ["per_zone", "per_room", "all_speakers"]
+
+    await hass.services.async_call(
+        "select", "select_option", {"entity_id": select, "option": "all_speakers"}, blocking=True
+    )
+    await hass.async_block_till_done()
+    assert fake.events_of(SetFollowMode) == [SetFollowMode(FollowMode.ALL_SPEAKERS)]
+
+    # Engine state drives the rendered option via the dispatcher signal.
+    fake.state.follow_mode = FollowMode.PER_ROOM
+    async_dispatcher_send(hass, controller.signal)
+    await hass.async_block_till_done()
+    assert hass.states.get(select).state == "per_room"
+
+
+async def test_follow_mode_select_restores_mode(hass: HomeAssistant, monkeypatch) -> None:
+    """A restored option is pushed back into the engine as SetFollowMode."""
+    mock_restore_cache(hass, (State("select.sonos_conductor_follow_mode", "per_room"),))
+    _entry, _controller, fake = await setup_conductor(hass, monkeypatch)
+    assert fake.events_of(SetFollowMode) == [SetFollowMode(FollowMode.PER_ROOM)]
+
+
+async def test_follow_mode_select_ignores_invalid_restore(hass: HomeAssistant, monkeypatch) -> None:
+    """Unknown/invalid restored values leave the engine at PER_ZONE."""
+    mock_restore_cache(hass, (State("select.sonos_conductor_follow_mode", "unavailable"),))
+    entry, _controller, fake = await setup_conductor(hass, monkeypatch)
+    assert fake.events_of(SetFollowMode) == []
+    select = entity_id_for(hass, "select", f"{entry.entry_id}_follow_mode")
+    assert hass.states.get(select).state == "per_zone"
+
+
+async def test_follow_mode_hides_per_room_without_shared_rooms(
+    hass: HomeAssistant, monkeypatch
+) -> None:
+    """With every zone in its own room, per_room would equal per_zone —
+    the redundant option is not offered (and a restored per_room is dropped)."""
+    options = deepcopy(OPTIONS)
+    for zone in options["zones"]:
+        zone["room"] = zone["zone_id"]  # each zone its own acoustic room
+    mock_restore_cache(hass, (State("select.sonos_conductor_follow_mode", "per_room"),))
+    entry, _controller, fake = await setup_conductor(hass, monkeypatch, options=options)
+
+    select = entity_id_for(hass, "select", f"{entry.entry_id}_follow_mode")
+    state = hass.states.get(select)
+    assert state.attributes["options"] == ["per_zone", "all_speakers"]
+    assert state.state == "per_zone"
+    assert fake.events_of(SetFollowMode) == []  # per_room restore: invalid now
 
 
 # ---------------------------------------------------------------------------
@@ -402,6 +456,7 @@ async def test_diagnostics_sensor(hass: HomeAssistant, monkeypatch) -> None:
     assert state.attributes["master"] == 0.2
     assert state.attributes["muted"] is False
     assert state.attributes["tv_solo_mode"] == "off"
+    assert state.attributes["follow_mode"] == "per_zone"
     assert state.attributes["keep_grouped"] is True
     assert state.attributes["night_mode"] is False
     assert state.attributes["speakers"][SOFA] == {

@@ -7,9 +7,18 @@ a testable state machine replacing YAML automation sprawl.
 
 ## What it does
 
-- **Master volume** — one slider / dial / HomeKit control for the whole house.
+- **Master volume** — one slider / dial / HomeKit control for the whole house,
+  right on the `media_player.sonos_conductor` entity (mute lives there too).
 - **Presence zones** — speakers fade in when a zone becomes occupied and fade
   out (after a hold time) when it empties.
+- **Follow mode** — choose how far your presence spreads: *per zone*
+  (follow-me, speaker by speaker — the default), *per room* (any presence in a
+  room plays every speaker sharing that room), or *all speakers* (the whole
+  house plays while anyone is home — the anyone-home sensor counts, so being
+  in a room without a speaker doesn't scale the house down — and an empty
+  house still goes quiet; an unavailable anyone-home sensor fails safe as
+  "someone is home"). It is independent of TV solo, which still silences
+  rooms on top of any follow mode.
 - **Rich presence via [Presence Conductor](https://github.com/leiklier/presence-conductor)** —
   when installed, its room devices are auto-discovered and preferred over
   plain binary sensors. Their activity classification shapes the hold time:
