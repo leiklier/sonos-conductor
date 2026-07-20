@@ -19,6 +19,12 @@ a testable state machine replacing YAML automation sprawl.
   house still goes quiet; an unavailable anyone-home sensor fails safe as
   "someone is home"). It is independent of TV solo, which still silences
   rooms on top of any follow mode.
+- **Idle attenuation** — choose how much the volume drops in zones you are
+  *not* in: *max* (idle zones go silent — the default), *balanced* or
+  *gentle* keep them playing as a quiet background bed instead (a quarter /
+  half of their normal level; both fractions are tunables). The bed weighs
+  into the room's loudness compensation so the total stays constant, and
+  ducking, night mode, TV solo and empty-home silence all still win over it.
 - **Rich presence via [Presence Conductor](https://github.com/leiklier/presence-conductor)** —
   when installed, its room devices are auto-discovered and preferred over
   plain binary sensors. Their activity classification shapes the hold time:
@@ -28,8 +34,9 @@ a testable state machine replacing YAML automation sprawl.
 - **Empty-home silence** — optionally gate the fallback zone on a home-level
   presence sensor (e.g. Presence Conductor's *Anyone home*): the music stops
   when the last person leaves and fades back in when someone returns.
-- **Acoustic compensation** — zones that share a room are scaled by `1/√N` so
-  total loudness stays constant as people move around.
+- **Acoustic compensation** — zones that share a room are scaled by `1/√N`
+  (power-weighted, so background beds count by their level) and total
+  loudness stays constant as people move around.
 - **Loudness trims** — per-speaker ratios compensate for hardware differences
   (a Move needs more gain than an Arc to feel equally loud).
 - **Ducking** — any binary sensor (e.g. the entrance door) temporarily caps

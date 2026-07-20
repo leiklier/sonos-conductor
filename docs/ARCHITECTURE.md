@@ -32,7 +32,7 @@ custom_components/sonos_conductor/
 ├── media_player.py       Master media player (HomeKit-friendly proxy)
 ├── number.py             Per-speaker trim
 ├── switch.py             enabled / keep_grouped / night_mode
-├── select.py             tv_solo (off / same_room / tv_zone) + follow_mode (per_zone / per_room / all_speakers)
+├── select.py             tv_solo (off / same_room / tv_zone) + follow_mode (per_zone / per_room / all_speakers) + idle_attenuation (gentle / balanced / max)
 ├── binary_sensor.py      Per-zone activity (replaces template helpers)
 └── sensor.py             Engine diagnostics
 ```
@@ -190,6 +190,7 @@ be absent; re-docking triggers repair too.
 | `switch.<name>_night_mode` | Global volume ceiling (`night_volume_cap`): no speaker plays above the cap while on. Restored across restarts; flip it from an HA automation for scheduling. |
 | `select.<name>_tv_solo` | TV-solo mode: off / same room / TV zone only. |
 | `select.<name>_follow_mode` | Follow mode (rule 1.9): per zone / per room / all speakers. How far presence spreads audibility; orthogonal to TV solo. Restored across restarts. |
+| `select.<name>_idle_attenuation` | Idle attenuation (rule 3.4): gentle / balanced / max. How much volume idle zones keep as a background bed; max = silent (default). Restored across restarts. |
 | `switch.<name>_keep_grouped` | Runtime toggle for group repair. |
 | `binary_sensor.<name>_zone_<zone>` | Zone audible? Attributes: FSM state, target volume, room scale. Replaces the `*_audio_zone` template helpers. |
 | `sensor.<name>_state` | Diagnostics: engine state snapshot, last event, effect counts. |
