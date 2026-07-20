@@ -24,13 +24,16 @@ conflict, this spec wins.
 - **desired(speaker)** —
   - `None` (do not touch) if speaker is STANDALONE or engine disabled;
   - `0.0` if `zone_level(zone) = 0`;
-  - else `min(zone_level × speaker_target(master, trim, room_scale),
+  - else `zone_level × min(speaker_target(master, trim, room_scale),
     duck_cap, night_cap)`
     where `duck_cap` = lowest `duck_volume` among active duck inputs (∞ if
     none) and `night_cap` = `night_volume_cap` while `night_mode` is on
-    (∞ otherwise). This is the single point where both caps apply — fades,
-    zone activations, rebalances, group joins, idle beds and startup all go
-    through it.
+    (∞ otherwise). The level multiplies the *capped* target: an idle bed is
+    always its preset fraction of what the zone would play if active, so
+    its relative attenuation survives night mode and ducking (a gentle bed
+    at night plays half the cap, not up to the cap). This is the single
+    point where both caps apply — fades, zone activations, rebalances,
+    group joins, idle beds and startup all go through it.
 - **reconcile(fade_context)** — for every speaker whose `desired ≠ commanded`
   (per `volumes_equal`), emit `RampVolume(speaker, desired, duration)` and set
   `commanded = desired`. The duration comes from the *cause*:
@@ -198,7 +201,9 @@ presence reaches.
     **bed** instead of hard silence (`zone_level`, section 0). `MAX` is
     full attenuation — idle zones are silent, the pre-3.4 behavior. The bed
     rides `desired()`'s single funnel, so everything composes unchanged:
-    duck and night caps apply on top, TV-solo suppression (6.2) and a
+    the bed is the preset fraction of the fully capped active target (so
+    duck and night compression preserve its relative attenuation — see
+    section 0), TV-solo suppression (6.2) and a
     definitively empty home (1.8) keep such zones hard-silent, STANDALONE
     speakers are never touched (2.3), and beds weigh into `room_scale` by
     their level so the bed never raises a room's total loudness. Bed zones
@@ -380,5 +385,6 @@ presence reaches.
   in one room wakes its room-mates but never the other room.
 - R13 Idle attenuation GENTLE: the occupied zone plays full, its room-mate
   plays the bed, and the pair's total room power equals exactly one full
-  zone; a TV solo still hard-silences bed zones; night mode caps the bed
-  and a report above the cap from a bed speaker gets the 4.5 pull-back.
+  zone; a TV solo still hard-silences bed zones; at night the bed plays
+  half the *capped* active level (0.075 for a 0.15 cap, at any master) and
+  a report above it from a bed speaker gets the 4.5 pull-back.

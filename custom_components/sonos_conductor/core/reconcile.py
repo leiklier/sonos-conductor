@@ -59,7 +59,7 @@ def desired(engine: ConductorEngine, speaker_id: str) -> float | None:
     level = zone_level(engine, zone.zone_id)
     if level <= 0.0:
         return 0.0
-    target = level * volume_math.speaker_target(
+    target = volume_math.speaker_target(
         engine.state.master, engine._trims[speaker_id], room_scale(engine, zone.room_id)
     )
     cap = duck_cap(engine)
@@ -67,7 +67,10 @@ def desired(engine: ConductorEngine, speaker_id: str) -> float | None:
         target = min(target, cap)
     if engine.state.night_mode:  # night ceiling (rule 3.3); duck below it wins
         target = min(target, engine.config.tunables.night_volume_cap)
-    return target
+    # The bed is a fraction of the *capped* active target (rule 3.4): a
+    # gentle bed stays at half the active level even when night mode or a
+    # duck has compressed everything toward its cap.
+    return level * target
 
 
 def is_audible(engine: ConductorEngine, zone_id: str) -> bool:

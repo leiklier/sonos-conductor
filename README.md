@@ -23,8 +23,10 @@ a testable state machine replacing YAML automation sprawl.
   *not* in: *max* (idle zones go silent — the default), *balanced* or
   *gentle* keep them playing as a quiet background bed instead (a quarter /
   half of their normal level; both fractions are tunables). The bed weighs
-  into the room's loudness compensation so the total stays constant, and
-  ducking, night mode, TV solo and empty-home silence all still win over it.
+  into the room's loudness compensation so the total stays constant; TV solo
+  and empty-home silence still hard-silence it, and under night mode or
+  ducking it keeps its fraction of the capped level (a gentle bed at night
+  plays half the night cap).
 - **Rich presence via [Presence Conductor](https://github.com/leiklier/presence-conductor)** —
   when installed, its room devices are auto-discovered and preferred over
   plain binary sensors. Their activity classification shapes the hold time:

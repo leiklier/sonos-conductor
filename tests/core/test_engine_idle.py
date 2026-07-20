@@ -119,19 +119,25 @@ class TestBedLevels:
 
 
 class TestComposition:
-    def test_duck_caps_beds(self) -> None:
+    def test_duck_scales_beds(self) -> None:
         h = Harness()
         h.fire(SetIdleAttenuation(IdleAttenuation.GENTLE))
         effects = h.fire(DuckChanged(DOOR, True), at=1.0)
-        for speaker in (KJOKKEN, SPISEBORD, SOFAKROK):
-            expect_ramp(effects, speaker, 0.05)
+        # The audible fallback ducks to the cap; beds stay their fraction of
+        # the capped level instead of pinning at the cap themselves.
+        expect_ramp(effects, SOFAKROK, 0.05)
+        expect_ramp(effects, KJOKKEN, GENTLE * 0.05)
+        expect_ramp(effects, SPISEBORD, GENTLE * 0.05)
 
-    def test_night_caps_beds(self) -> None:
+    def test_night_scales_beds(self) -> None:
         h = Harness()
         h.fire(SetIdleAttenuation(IdleAttenuation.GENTLE))
         effects = h.fire(SetNightMode(True), at=1.0)
-        # kjokken's bed (0.18) exceeds the night cap and is pulled under it.
-        expect_ramp(effects, KJOKKEN, 0.15)
+        # The bed keeps its relative attenuation under the night cap: a
+        # gentle bed plays half the capped active level, at any master.
+        expect_ramp(effects, SOFAKROK, 0.15)
+        expect_ramp(effects, KJOKKEN, GENTLE * 0.15)
+        expect_ramp(effects, SPISEBORD, GENTLE * 0.15)
 
     def test_tv_solo_silences_beds(self) -> None:
         h = Harness()
@@ -192,9 +198,9 @@ class TestExternalReports:
         h.fire(SetIdleAttenuation(IdleAttenuation.GENTLE))
         h.fire(SetNightMode(True), at=1.0)
         effects = h.fire(ExternalVolume(KJOKKEN, 0.5), at=2.0)
-        # The engine wants the bed (capped at 0.15): one corrective ramp,
-        # no debounce timer, master untouched (rule 4.5).
-        expect_ramp(effects, KJOKKEN, 0.15)
+        # The engine wants the bed (half the night cap): one corrective
+        # ramp, no debounce timer, master untouched (rule 4.5).
+        expect_ramp(effects, KJOKKEN, GENTLE * 0.15)
         assert not timer_starts(effects)
         assert h.state.master == MASTER
 
