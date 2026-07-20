@@ -15,6 +15,7 @@ from .events import (
     DuckChanged,
     ExternalMute,
     ExternalVolume,
+    SetIdleAttenuation,
     SetMaster,
     SetMute,
     SetNightMode,
@@ -51,6 +52,19 @@ def on_set_night_mode(engine: ConductorEngine, event: SetNightMode, now: float, 
     if not engine.state.enabled:
         return  # 8.2's enable reconcile applies the cap later
     reconcile.reconcile(engine, plan, engine.config.tunables.rebalance_fade)  # 3.3
+
+
+def on_set_idle_attenuation(
+    engine: ConductorEngine, event: SetIdleAttenuation, now: float, plan: Plan
+) -> None:
+    changed = engine.state.idle_attenuation is not event.mode
+    engine.state.idle_attenuation = event.mode  # 3.4 (state stays fresh while disabled, 8.1)
+    if not changed:
+        return
+    engine._mode_change_at = now  # counts as a mode change (rule 4.1)
+    if not engine.state.enabled:
+        return  # 8.2's enable reconcile applies the bed later
+    reconcile.reconcile(engine, plan, engine.config.tunables.rebalance_fade)  # 3.4
 
 
 def on_set_mute(engine: ConductorEngine, event: SetMute, plan: Plan) -> None:
@@ -127,7 +141,7 @@ def _night_pull_back(engine: ConductorEngine, speaker_id: str, volume: float, pl
     if engine._is_standalone_speaker(speaker_id):
         return False  # 2.3: the user owns it
     zone = engine.config.zone_for_speaker(speaker_id)
-    if zone is None or not reconcile.is_audible(engine, zone.zone_id):
+    if zone is None or reconcile.zone_level(engine, zone.zone_id) <= 0.0:
         return False  # engine wants it silent anyway; state update suffices
     state.speakers[speaker_id].commanded = volume  # adopt reality, then converge
     reconcile.reconcile(engine, plan, engine.config.tunables.rebalance_fade)
