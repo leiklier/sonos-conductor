@@ -773,3 +773,39 @@ async def test_media_player_other_source_absorbs_unmatched(
     await entity.async_select_source("Other")
     await hass.async_block_till_done()
     assert select_calls == []  # synthetic input: nothing forwarded
+
+
+# ---------------------------------------------------------------------------
+# speaker volume sensors
+# ---------------------------------------------------------------------------
+
+
+async def test_speaker_volume_sensors_mirror_device_volume(
+    hass: HomeAssistant, monkeypatch
+) -> None:
+    entry, _controller, _fake = await setup_conductor(hass, monkeypatch)
+    sofa = entity_id_for(hass, "sensor", f"{entry.entry_id}_volume_{SOFA}")
+    move = entity_id_for(hass, "sensor", f"{entry.entry_id}_volume_{MOVE}")
+
+    state = hass.states.get(sofa)
+    assert state.state == "20"  # seeded at volume_level 0.2
+    assert state.attributes["unit_of_measurement"] == "%"
+    assert hass.states.get(move).state == "20"
+
+    set_speaker(hass, SOFA, volume=0.35)  # a conductor write or user change lands
+    await hass.async_block_till_done()
+    assert hass.states.get(sofa).state == "35"
+    assert hass.states.get(move).state == "20"  # other speakers untouched
+
+
+async def test_speaker_volume_sensor_follows_availability(hass: HomeAssistant, monkeypatch) -> None:
+    entry, _controller, _fake = await setup_conductor(hass, monkeypatch)
+    sofa = entity_id_for(hass, "sensor", f"{entry.entry_id}_volume_{SOFA}")
+
+    hass.states.async_set(SOFA, "unavailable")
+    await hass.async_block_till_done()
+    assert hass.states.get(sofa).state == "unavailable"
+
+    set_speaker(hass, SOFA, volume=0.15)  # the speaker comes back
+    await hass.async_block_till_done()
+    assert hass.states.get(sofa).state == "15"

@@ -68,6 +68,9 @@
       }
     },
     "sensor": {
+      "speaker_volume": {
+        "default": "mdi:volume-high"
+      },
       "state": {
         "default": "mdi:tune",
         "state": {
