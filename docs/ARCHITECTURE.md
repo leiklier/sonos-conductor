@@ -30,6 +30,7 @@ custom_components/sonos_conductor/
 ├── discovery.py          Registry scanning (speakers, dock sensors, areas, TVs)
 ├── config_flow.py        Config + options flow built on discovery suggestions
 ├── media_player.py       Master media player (HomeKit-friendly proxy)
+├── event.py              HomeKit remote key presses (automation trigger)
 ├── number.py             Per-speaker trim
 ├── switch.py             enabled / keep_grouped / night_mode
 ├── select.py             tv_solo (off / same_room / tv_zone) + follow_mode (per_zone / per_room / all_speakers) + idle_attenuation (gentle / balanced / max)
@@ -185,7 +186,8 @@ be absent; re-docking triggers repair too.
 
 | Entity | Purpose |
 |---|---|
-| `media_player.sonos_conductor` | Master proxy: play/pause/next/prev to group leader, **volume slider = master, mute button = global mute** (the master volume and mute live here — no separate `number`/`switch` duplicate them). `device_class: tv`-style TelevisionAccessory → expose via an existing HomeKit bridge for Control-Center volume control. |
+| `media_player.sonos_conductor` | Master proxy: play/pause/next/prev to group leader, **volume slider = master, mute button = global mute** (the master volume and mute live here — no separate `number`/`switch` duplicate them). `device_class: tv`-style TelevisionAccessory → expose via an existing HomeKit bridge for Control-Center volume control. iOS Remote keys: left/right = skip, OK = play/pause, up/down = previous/next favorite. |
+| `event.<name>_remote_key` | Every HomeKit remote key press (including ones with built-in behavior) as an event entity — trigger automations on e.g. the info button. |
 | `switch.<name>_enabled` | Kill switch — instant rollback to old automations during migration. |
 | `switch.<name>_night_mode` | Global volume ceiling (`night_volume_cap`): no speaker plays above the cap while on. Restored across restarts; flip it from an HA automation for scheduling. |
 | `select.<name>_tv_solo` | TV-solo mode: off / same room / TV zone only. |

@@ -12,11 +12,14 @@ Two extra HomeKit affordances:
   stations, playlists — plus hardware inputs like the Arc's TV) is mirrored,
   so the Home app shows them as selectable inputs. Selection is forwarded to
   the leader. Optionally restricted via the ``homekit_sources`` option.
-- **Remote skip**: the HomeKit bridge only handles play/pause itself; every
+- **Remote keys**: the HomeKit bridge only handles play/pause itself; every
   other remote key is re-fired on the HA bus as a
   ``homekit_tv_remote_key_pressed`` event. We consume those aimed at this
-  entity and turn horizontal arrows / skip keys into next/previous track on
-  the leader, so swiping in the iOS Remote skips tracks.
+  entity: horizontal arrows / skip keys become next/previous track on the
+  leader, the center tap (``select``) toggles play/pause, and vertical
+  arrows step through the source list (Sonos favorites). Every key is also
+  re-dispatched to the ``event`` entity so automations can trigger on
+  presses (e.g. the info button).
 """
 
 from __future__ import annotations
@@ -43,12 +46,14 @@ from homeassistant.const import (
     SERVICE_MEDIA_NEXT_TRACK,
     SERVICE_MEDIA_PAUSE,
     SERVICE_MEDIA_PLAY,
+    SERVICE_MEDIA_PLAY_PAUSE,
     SERVICE_MEDIA_PREVIOUS_TRACK,
     STATE_BUFFERING,
     STATE_PLAYING,
 )
 from homeassistant.core import Event as HAEvent
 from homeassistant.core import EventStateChangedData, HomeAssistant, State, callback
+from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change_event
 
@@ -67,6 +72,9 @@ EVENT_HOMEKIT_TV_REMOTE_KEY_PRESSED = "homekit_tv_remote_key_pressed"
 ATTR_KEY_NAME = "key_name"
 NEXT_KEYS = ("arrow_right", "next_track", "fast_forward")
 PREVIOUS_KEYS = ("arrow_left", "previous_track", "rewind")
+KEY_SELECT = "select"
+KEY_ARROW_UP = "arrow_up"
+KEY_ARROW_DOWN = "arrow_down"
 
 #: Synthetic first input absorbing playback no real source matches
 #: (Spotify Connect, announcements). Selecting it is a no-op.
@@ -144,10 +152,36 @@ class SonosConductorMediaPlayer(ConductorEntity, MediaPlayerEntity):
         if event.data.get(ATTR_ENTITY_ID) != self.entity_id:
             return
         key = event.data.get(ATTR_KEY_NAME)
+        # Every key also reaches the remote-key event entity, so any press —
+        # including ones handled below — can trigger automations.
+        async_dispatcher_send(self.hass, self.controller.remote_key_signal, key)
         if key in NEXT_KEYS:
             await self._forward(SERVICE_MEDIA_NEXT_TRACK)
         elif key in PREVIOUS_KEYS:
             await self._forward(SERVICE_MEDIA_PREVIOUS_TRACK)
+        elif key == KEY_SELECT:
+            await self._forward(SERVICE_MEDIA_PLAY_PAUSE)
+        elif key == KEY_ARROW_UP:
+            await self._step_source(-1)
+        elif key == KEY_ARROW_DOWN:
+            await self._step_source(1)
+
+    async def _step_source(self, step: int) -> None:
+        """Select the previous/next real source (Sonos favorite / input).
+
+        The synthetic ``Other`` never gets selected: when playback matches no
+        real source, stepping enters the list at the edge nearest the travel
+        direction (down → first favorite, up → last).
+        """
+        sources = [s for s in (self.source_list or []) if s != SOURCE_OTHER]
+        if not sources:
+            return
+        current = self.source
+        if current in sources:
+            index = (sources.index(current) + step) % len(sources)
+        else:
+            index = 0 if step > 0 else len(sources) - 1
+        await self.async_select_source(sources[index])
 
     @property
     def _leader(self) -> State | None:

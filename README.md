@@ -54,10 +54,14 @@ a testable state machine replacing YAML automation sprawl.
 - **Group repair** — if the Sonos group spontaneously dissolves, the conductor
   quietly reassembles it.
 - **HomeKit-friendly** — exposes a master media player as a HomeKit
-  Television accessory: volume and play/pause from Control Center, swipe
-  left/right in the iOS Remote to skip tracks, power toggle = play/pause, and
-  your Sonos favorites (radio stations, playlists) plus hardware inputs
-  appear as selectable inputs in the Home app.
+  Television accessory: volume and play/pause from Control Center, power
+  toggle = play/pause, and your Sonos favorites (radio stations, playlists)
+  plus hardware inputs appear as selectable inputs in the Home app. The iOS
+  Remote is fully mapped: swipe left/right to skip tracks, tap (OK) to
+  play/pause, swipe up/down to step through your favorites, and every key —
+  most usefully the otherwise-unused info button — is published on
+  `event.sonos_conductor_remote_key` for automations (e.g. info → TTS
+  announcing what's playing).
 
 ## Why an integration instead of automations
 

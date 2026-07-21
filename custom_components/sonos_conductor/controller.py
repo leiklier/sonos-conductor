@@ -350,6 +350,9 @@ class SonosConductorController:
         self.entry = entry
         self.config = config
         self.signal = f"{DOMAIN}_{entry.entry_id}_updated"
+        #: Dispatcher signal carrying HomeKit remote key names (media_player
+        #: receives the bus event, the event entity records the press).
+        self.remote_key_signal = f"{DOMAIN}_{entry.entry_id}_remote_key"
         # The engine is created eagerly so entities added during platform
         # forwarding can always read ``engine.state``.
         self.engine = engine_factory(config, snapshot)

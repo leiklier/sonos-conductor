@@ -618,8 +618,7 @@ async def test_media_player_homekit_remote_keys_skip_tracks(
         ("arrow_left", 3, 1),
         ("previous_track", 3, 2),
         ("rewind", 3, 3),
-        ("select", 3, 3),  # unrelated keys are ignored
-        ("arrow_up", 3, 3),
+        ("back", 3, 3),  # unmapped keys are ignored
     ):
         hass.bus.async_fire("homekit_tv_remote_key_pressed", {"key_name": key, "entity_id": player})
         await hass.async_block_till_done()
@@ -634,6 +633,109 @@ async def test_media_player_homekit_remote_keys_skip_tracks(
     )
     await hass.async_block_till_done()
     assert len(next_calls) == 3
+
+
+async def test_media_player_homekit_select_toggles_play_pause(
+    hass: HomeAssistant, monkeypatch
+) -> None:
+    """The remote's center tap (OK) toggles play/pause on the leader."""
+    entry, _controller, _fake = await setup_conductor(hass, monkeypatch)
+    player = entity_id_for(hass, "media_player", f"{entry.entry_id}_master")
+
+    calls = async_mock_service(hass, "media_player", "media_play_pause")
+    hass.bus.async_fire(
+        "homekit_tv_remote_key_pressed", {"key_name": "select", "entity_id": player}
+    )
+    await hass.async_block_till_done()
+    assert len(calls) == 1
+    assert calls[0].data == {"entity_id": SOFA}
+
+
+async def test_media_player_homekit_vertical_arrows_step_favorites(
+    hass: HomeAssistant, monkeypatch
+) -> None:
+    """arrow_up/arrow_down step through the leader's sources (favorites)."""
+    entry, _controller, _fake = await setup_conductor(hass, monkeypatch)
+    player = entity_id_for(hass, "media_player", f"{entry.entry_id}_master")
+    favorites = ["TV", "NRK P1", "Discover Weekly"]
+
+    select_calls = async_mock_service(hass, "media_player", "select_source")
+
+    def press(key: str) -> None:
+        hass.bus.async_fire("homekit_tv_remote_key_pressed", {"key_name": key, "entity_id": player})
+
+    # Nothing recognized playing (source = Other): down enters at the first
+    # favorite, up at the last — the synthetic Other is never selected.
+    set_speaker(hass, SOFA, source_list=favorites)
+    await hass.async_block_till_done()
+    press("arrow_down")
+    await hass.async_block_till_done()
+    assert select_calls[-1].data == {"entity_id": SOFA, "source": "TV"}
+    press("arrow_up")
+    await hass.async_block_till_done()
+    assert select_calls[-1].data == {"entity_id": SOFA, "source": "Discover Weekly"}
+
+    # From a recognized source, down/up step forward/backward...
+    set_speaker(hass, SOFA, source_list=favorites, source="NRK P1")
+    await hass.async_block_till_done()
+    press("arrow_down")
+    await hass.async_block_till_done()
+    assert select_calls[-1].data == {"entity_id": SOFA, "source": "Discover Weekly"}
+    press("arrow_up")
+    await hass.async_block_till_done()
+    assert select_calls[-1].data == {"entity_id": SOFA, "source": "TV"}
+
+    # ...and wrap around at either end.
+    set_speaker(hass, SOFA, source_list=favorites, source="Discover Weekly")
+    await hass.async_block_till_done()
+    press("arrow_down")
+    await hass.async_block_till_done()
+    assert select_calls[-1].data == {"entity_id": SOFA, "source": "TV"}
+    set_speaker(hass, SOFA, source_list=favorites, source="TV")
+    await hass.async_block_till_done()
+    press("arrow_up")
+    await hass.async_block_till_done()
+    assert select_calls[-1].data == {"entity_id": SOFA, "source": "Discover Weekly"}
+
+    # No sources at all: stepping is a no-op.
+    count = len(select_calls)
+    set_speaker(hass, SOFA, source_list=[])
+    await hass.async_block_till_done()
+    press("arrow_down")
+    await hass.async_block_till_done()
+    assert len(select_calls) == count
+
+
+async def test_remote_key_event_entity_records_presses(hass: HomeAssistant, monkeypatch) -> None:
+    """Every forwarded remote key lands on the event entity for automations."""
+    entry, _controller, _fake = await setup_conductor(hass, monkeypatch)
+    player = entity_id_for(hass, "media_player", f"{entry.entry_id}_master")
+    event_entity = entity_id_for(hass, "event", f"{entry.entry_id}_remote_key")
+
+    assert hass.states.get(event_entity).state == "unknown"  # no press yet
+
+    # The info button has no built-in mapping — its whole point is this hook.
+    hass.bus.async_fire(
+        "homekit_tv_remote_key_pressed", {"key_name": "information", "entity_id": player}
+    )
+    await hass.async_block_till_done()
+    assert hass.states.get(event_entity).attributes["event_type"] == "information"
+
+    # Keys with built-in behavior are recorded too.
+    async_mock_service(hass, "media_player", "media_play_pause")
+    hass.bus.async_fire(
+        "homekit_tv_remote_key_pressed", {"key_name": "select", "entity_id": player}
+    )
+    await hass.async_block_till_done()
+    assert hass.states.get(event_entity).attributes["event_type"] == "select"
+
+    # Presses aimed at another accessory never register.
+    hass.bus.async_fire(
+        "homekit_tv_remote_key_pressed",
+        {"key_name": "information", "entity_id": "media_player.other_tv"},
+    )
+    await hass.async_block_till_done()
+    assert hass.states.get(event_entity).attributes["event_type"] == "select"
 
 
 async def test_media_player_power_maps_to_playback(hass: HomeAssistant, monkeypatch) -> None:
