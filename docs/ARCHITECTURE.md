@@ -35,7 +35,7 @@ custom_components/sonos_conductor/
 ├── switch.py             enabled / keep_grouped / night_mode
 ├── select.py             tv_solo (off / same_room / tv_zone) + follow_mode (per_zone / per_room / all_speakers) + idle_attenuation (gentle / balanced / max)
 ├── binary_sensor.py      Per-zone activity (replaces template helpers)
-└── sensor.py             Engine diagnostics
+└── sensor.py             Engine diagnostics + per-speaker volume mirrors
 ```
 
 **The dependency rule:** `core/` never imports from Home Assistant or from the
@@ -196,6 +196,7 @@ be absent; re-docking triggers repair too.
 | `switch.<name>_keep_grouped` | Runtime toggle for group repair. |
 | `binary_sensor.<name>_zone_<zone>` | Zone audible? Attributes: FSM state, target volume, room scale. Replaces the `*_audio_zone` template helpers. |
 | `sensor.<name>_state` | Diagnostics: engine state snapshot, last event, effect counts. |
+| `sensor.<name>_volume_<speaker>` | A speaker's actual device volume as a read-only percentage (mirrors the underlying `media_player`'s `volume_level`). Watch fades, profile changes and idle beds without opening the Sonos app. |
 | `number.<name>_trim_<speaker>` | Per-speaker loudness trim, adjustable at runtime. |
 
 ## Config flow & discovery
