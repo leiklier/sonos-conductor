@@ -225,6 +225,28 @@
     }
   },
   "entity": {
+    "event": {
+      "remote_key": {
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "arrow_up": "Opp",
+              "arrow_down": "Ned",
+              "arrow_left": "Venstre",
+              "arrow_right": "Høyre",
+              "select": "OK",
+              "back": "Tilbake",
+              "exit": "Avslutt",
+              "information": "Info",
+              "previous_track": "Forrige spor",
+              "next_track": "Neste spor",
+              "rewind": "Spol tilbake",
+              "fast_forward": "Spol fremover"
+            }
+          }
+        }
+      }
+    },
     "select": {
       "tv_solo": {
         "state": {

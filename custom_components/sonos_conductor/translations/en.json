@@ -225,6 +225,28 @@
     }
   },
   "entity": {
+    "event": {
+      "remote_key": {
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "arrow_up": "Up",
+              "arrow_down": "Down",
+              "arrow_left": "Left",
+              "arrow_right": "Right",
+              "select": "OK",
+              "back": "Back",
+              "exit": "Exit",
+              "information": "Info",
+              "previous_track": "Previous track",
+              "next_track": "Next track",
+              "rewind": "Rewind",
+              "fast_forward": "Fast forward"
+            }
+          }
+        }
+      }
+    },
     "select": {
       "tv_solo": {
         "state": {
