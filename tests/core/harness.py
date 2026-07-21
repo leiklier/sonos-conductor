@@ -35,6 +35,10 @@ from custom_components.sonos_conductor.core.model import (
     TvSoloMode,
     ZoneConfig,
 )
+from custom_components.sonos_conductor.core.volume_math import VOLUME_FLOOR
+
+#: Where "silent" speakers rest (never a true zero — see VOLUME_FLOOR).
+FLOOR = VOLUME_FLOOR
 
 KJOKKEN = "media_player.kjokken_sonos_move"
 SPISEBORD = "media_player.spisebord_sonos"
@@ -125,9 +129,9 @@ def make_snapshot(
     matches its target so ``start()`` emits nothing.
     """
     base_volumes: dict[str, float | None] = {
-        KJOKKEN: 0.0,
-        SPISEBORD: 0.0,
-        SOFAKROK: master if master is not None else 0.0,
+        KJOKKEN: FLOOR,
+        SPISEBORD: FLOOR,
+        SOFAKROK: master if master is not None else FLOOR,
     }
     if volumes is not None:
         base_volumes.update(volumes)  # partial overrides merge over defaults

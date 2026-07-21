@@ -23,6 +23,7 @@ from custom_components.sonos_conductor.core.model import TvSoloMode, ZonePhase
 
 from .harness import (
     DOOR,
+    FLOOR,
     KJOKKEN,
     SOFAKROK,
     SPISEBORD,
@@ -101,7 +102,7 @@ class TestRule82Enable:
         assert h.state.zones["sofakrok"].phase is ZonePhase.IDLE  # other zone audible
         assert effects == [
             RampVolume(SPISEBORD, 0.3 * 1.1, 2.0),  # from adopted 0.7 back to target
-            RampVolume(SOFAKROK, 0.0, 2.0),  # no longer forced
+            RampVolume(SOFAKROK, FLOOR, 2.0),  # no longer forced
         ]
 
     def test_rule_8_2_enable_rearms_group_repair(self) -> None:

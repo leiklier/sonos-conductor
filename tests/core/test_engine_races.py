@@ -22,6 +22,7 @@ from custom_components.sonos_conductor.core.volume_math import implied_master
 from .harness import (
     ALL_SPEAKERS,
     DOOR,
+    FLOOR,
     KJOKKEN,
     SOFAKROK,
     SPISEBORD,
@@ -43,9 +44,9 @@ def test_race_r1_fade_out_during_master_ramp() -> None:
     h.fire(SetMaster(0.6), at=10.0)  # mid-hold master change: ramp to 0.72
     effects = h.fire_timer(timers.zone_release("kjokken"))  # t=65
     ramp = ramp_for(effects, KJOKKEN)
-    assert ramp is not None and ramp.target == 0.0  # single final ramp to 0
+    assert ramp is not None and ramp.target == FLOOR  # single final ramp to the floor
     assert ramp.duration == 5.0
-    assert h.state.speakers[KJOKKEN].commanded == 0.0  # commanded consistent
+    assert h.state.speakers[KJOKKEN].commanded == FLOOR  # commanded consistent
     expect_ramp(effects, SOFAKROK, 0.6, duration=3.0)  # fallback at new master
 
 
@@ -105,7 +106,7 @@ def test_race_r6_undock_mid_fade_then_redock() -> None:
     # target at the current room scale.
     effects = h.fire(DockChanged(KJOKKEN, True), at=30.0)
     expect_ramp(effects, KJOKKEN, 0.36, duration=3.0)
-    expect_ramp(effects, SOFAKROK, 0.0, duration=5.0)  # fallback yields again
+    expect_ramp(effects, SOFAKROK, FLOOR, duration=5.0)  # fallback yields again
 
 
 def test_race_r7_simultaneous_same_room_zones() -> None:
@@ -118,7 +119,7 @@ def test_race_r7_simultaneous_same_room_zones() -> None:
     # Deactivating one rebalances the other back up.
     h.vacate("spisebord", at=10.0)
     effects = h.fire_timer(timers.zone_release("spisebord"))  # t=25
-    expect_ramp(effects, SPISEBORD, 0.0, duration=5.0)
+    expect_ramp(effects, SPISEBORD, FLOOR, duration=5.0)
     expect_ramp(effects, SOFAKROK, 0.3, duration=2.0)
 
 
@@ -158,4 +159,4 @@ def test_race_r10_tv_solo_full_script() -> None:
     expect_ramp(effects, KJOKKEN, 0.36, duration=2.0)
     assert timer_starts(effects) == [StartTimer(timers.zone_release("sofakrok"), 15.0)]
     effects = h.fire_timer(timers.zone_release("sofakrok"))  # t=45
-    expect_ramp(effects, SOFAKROK, 0.0, duration=5.0)
+    expect_ramp(effects, SOFAKROK, FLOOR, duration=5.0)

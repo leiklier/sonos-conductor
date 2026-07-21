@@ -18,6 +18,7 @@ from custom_components.sonos_conductor.core.model import TvSoloMode, ZonePhase
 
 from .harness import (
     DOOR,
+    FLOOR,
     KJOKKEN,
     SOFAKROK,
     SPISEBORD,
@@ -77,7 +78,7 @@ class TestRule33Basics:
         h.fire(SetNightMode(True), at=0.0)
         effects = h.occupy("kjokken", at=1.0)
         expect_ramp(effects, KJOKKEN, 0.15, duration=3.0)  # fade_in, capped
-        expect_ramp(effects, SOFAKROK, 0.0, duration=5.0)  # fallback retires
+        expect_ramp(effects, SOFAKROK, FLOOR, duration=5.0)  # fallback retires
 
 
 class TestNightDuckInteraction:

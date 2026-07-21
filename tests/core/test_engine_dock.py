@@ -14,6 +14,7 @@ from custom_components.sonos_conductor.core.events import (
 from custom_components.sonos_conductor.core.model import ZonePhase
 
 from .harness import (
+    FLOOR,
     KJOKKEN,
     SOFAKROK,
     SPISEBORD,
@@ -76,7 +77,7 @@ class TestRule22Redock:
         effects = h.fire(DockChanged(KJOKKEN, True), at=30.0)
         assert h.state.zones["kjokken"].phase is ZonePhase.ACTIVE
         expect_ramp(effects, KJOKKEN, 0.36, duration=3.0)  # fade_in
-        expect_ramp(effects, SOFAKROK, 0.0, duration=5.0)  # fallback yields
+        expect_ramp(effects, SOFAKROK, FLOOR, duration=5.0)  # fallback yields
 
     def test_rule_2_2_redock_unoccupied_lands_idle_and_silences(self) -> None:
         # Conductor takes ownership back: an idle zone's speaker goes to 0.
@@ -84,7 +85,7 @@ class TestRule22Redock:
         h.fire(DockChanged(KJOKKEN, False), at=0.0)
         effects = h.fire(DockChanged(KJOKKEN, True), at=10.0)
         assert h.state.zones["kjokken"].phase is ZonePhase.IDLE
-        expect_ramp(effects, KJOKKEN, 0.0, duration=2.0)
+        expect_ramp(effects, KJOKKEN, FLOOR, duration=2.0)
 
     def test_rule_2_2_redock_schedules_group_repair(self) -> None:
         h = Harness()

@@ -28,6 +28,7 @@ from custom_components.sonos_conductor.core.model import IdleAttenuation, TvSolo
 
 from .harness import (
     DOOR,
+    FLOOR,
     KJOKKEN,
     SOFAKROK,
     SPISEBORD,
@@ -145,8 +146,8 @@ class TestComposition:
         h.fire(SetTvSoloMode(TvSoloMode.TV_ZONE), at=1.0)
         effects = h.fire(TvPlayingChanged("sofakrok", True), at=2.0)
         # Solo wins over the bed: suppressed zones go hard-silent.
-        expect_ramp(effects, KJOKKEN, 0.0)
-        expect_ramp(effects, SPISEBORD, 0.0)
+        expect_ramp(effects, KJOKKEN, FLOOR)
+        expect_ramp(effects, SPISEBORD, FLOOR)
         assert h.state.suppressed == {"kjokken", "spisebord"}
 
     def test_empty_home_silences_beds(self) -> None:
@@ -155,7 +156,7 @@ class TestComposition:
         effects = h.fire(HomePresenceChanged(False), at=1.0)
         # Definitively empty: beds and the forced fallback all go silent.
         for speaker in (KJOKKEN, SPISEBORD, SOFAKROK):
-            expect_ramp(effects, speaker, 0.0)
+            expect_ramp(effects, speaker, FLOOR)
         effects = h.fire(HomePresenceChanged(True), at=2.0)
         scale = stue_scale(GENTLE)
         expect_ramp(effects, KJOKKEN, GENTLE * MASTER * 1.2)

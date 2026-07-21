@@ -21,15 +21,16 @@ from .events import (
     SetNightMode,
     SetTrim,
 )
-from .volume_math import clamp, implied_master, volumes_equal
+from .volume_math import VOLUME_FLOOR, clamp, implied_master, volumes_equal
 
 if TYPE_CHECKING:
     from .engine import ConductorEngine
     from .plan import Plan
 
 #: External volume reports at or below this are never trusted for reverse
-#: sync (rule 4.1 hard-zero guard).
-_HARD_ZERO = 0.01
+#: sync (rule 4.1 hard-zero guard). Equal to the volume floor so speakers
+#: parked at the floor never imply a master.
+_HARD_ZERO = VOLUME_FLOOR
 
 # ---------------------------------------------------------------------
 # Master / night mode / mute (rules 3, 5)
