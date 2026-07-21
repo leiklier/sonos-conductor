@@ -11,6 +11,7 @@ from custom_components.sonos_conductor.core.model import TvSoloMode, ZonePhase
 from .harness import (
     ALL_SPEAKERS,
     DOOR,
+    FLOOR,
     KJOKKEN,
     SOFAKROK,
     SPISEBORD,
@@ -187,7 +188,7 @@ class TestAdoption:
                 volumes={KJOKKEN: 0.36, SPISEBORD: 0.0, SOFAKROK: 0.3},
             )
         )
-        expect_ramp(h.start_effects, KJOKKEN, 0.0, duration=2.0)
+        expect_ramp(h.start_effects, KJOKKEN, FLOOR, duration=2.0)
         expect_no_ramp(h.start_effects, SOFAKROK)
 
     def test_startup_muted_still_converges(self) -> None:

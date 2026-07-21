@@ -10,6 +10,7 @@ from custom_components.sonos_conductor.core.events import SetTvSoloMode, TvPlayi
 from custom_components.sonos_conductor.core.model import TvSoloMode, ZonePhase
 
 from .harness import (
+    FLOOR,
     KJOKKEN,
     SOFAKROK,
     SPISEBORD,
@@ -53,7 +54,7 @@ class TestRule62SameRoom:
         h.occupy("kjokken", at=0.0)
         h.fire(SetTvSoloMode(TvSoloMode.SAME_ROOM), at=1.0)
         effects = h.fire(TvPlayingChanged("sofakrok", True), at=2.0)
-        expect_ramp(effects, KJOKKEN, 0.0, duration=2.0)  # suppressed
+        expect_ramp(effects, KJOKKEN, FLOOR, duration=2.0)  # suppressed
         expect_ramp(effects, SOFAKROK, 0.3, duration=3.0)  # fade_in
         assert h.state.zones["kjokken"].phase is ZonePhase.ACTIVE  # FSM untouched
 
@@ -104,8 +105,8 @@ class TestRule62TvZone:
         h.occupy("kjokken", at=1.0)  # other room
         h.fire(SetTvSoloMode(TvSoloMode.TV_ZONE), at=2.0)
         effects = h.fire(TvPlayingChanged("sofakrok", True), at=3.0)
-        expect_ramp(effects, SPISEBORD, 0.0, duration=2.0)  # suppressed despite room
-        expect_ramp(effects, KJOKKEN, 0.0, duration=2.0)  # suppressed
+        expect_ramp(effects, SPISEBORD, FLOOR, duration=2.0)  # suppressed despite room
+        expect_ramp(effects, KJOKKEN, FLOOR, duration=2.0)  # suppressed
         expect_ramp(effects, SOFAKROK, 0.3, duration=3.0)  # the TV zone fades in
         assert h.state.zones["spisebord"].phase is ZonePhase.ACTIVE  # FSM untouched
 
@@ -120,7 +121,7 @@ class TestRule62TvZone:
         # scale keeps its target there — no write at all, let alone a 0.
         expect_no_ramp(effects, SPISEBORD)
         assert h.state.speakers[SPISEBORD].commanded == 0.3 * 1.1
-        expect_ramp(effects, KJOKKEN, 0.0, duration=2.0)  # other room suppressed
+        expect_ramp(effects, KJOKKEN, FLOOR, duration=2.0)  # other room suppressed
         expect_ramp(effects, SOFAKROK, 0.3, duration=3.0)
 
     def test_rule_6_2_switching_same_room_to_tv_zone_single_reconcile(self) -> None:
@@ -129,7 +130,7 @@ class TestRule62TvZone:
         h.fire(SetTvSoloMode(TvSoloMode.SAME_ROOM), at=1.0)
         h.fire(TvPlayingChanged("sofakrok", True), at=2.0)  # spisebord stays audible
         effects = h.fire(SetTvSoloMode(TvSoloMode.TV_ZONE), at=3.0)
-        expect_ramp(effects, SPISEBORD, 0.0, duration=2.0)  # now suppressed
+        expect_ramp(effects, SPISEBORD, FLOOR, duration=2.0)  # now suppressed
         expect_no_ramp(effects, SOFAKROK)
         effects = h.fire(SetTvSoloMode(TvSoloMode.SAME_ROOM), at=20.0)
         expect_ramp(effects, SPISEBORD, 0.3 * 1.1, duration=2.0)  # restored
@@ -163,7 +164,7 @@ class TestRule63SoloMode:
         h.occupy("kjokken", at=0.0)
         h.fire(TvPlayingChanged("sofakrok", True), at=1.0)  # mode off: no suppression
         effects = h.fire(SetTvSoloMode(TvSoloMode.SAME_ROOM), at=2.0)
-        expect_ramp(effects, KJOKKEN, 0.0, duration=2.0)
+        expect_ramp(effects, KJOKKEN, FLOOR, duration=2.0)
 
     def test_rule_6_3_disabling_solo_restores(self) -> None:
         h = Harness()

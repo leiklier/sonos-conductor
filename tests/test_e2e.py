@@ -34,6 +34,7 @@ from pytest_homeassistant_custom_component.common import (
 )
 
 from custom_components.sonos_conductor.const import DOMAIN
+from custom_components.sonos_conductor.core.volume_math import VOLUME_FLOOR as FLOOR
 
 ARC = "media_player.sofakrok_sonos"
 ERA = "media_player.spisebord_sonos"
@@ -140,11 +141,13 @@ async def _setup(hass: HomeAssistant, *, occupied=(), tv="off", docked=True, doo
     hass.states.async_set(TV, tv)
     hass.states.async_set(DOCK, "on" if docked else "off")
     hass.states.async_set(DOOR, door)
-    # Arc starts at the master (0.2); the others start silent. Startup
-    # reconciliation converges whatever does not match the seeded phases.
+    # Arc starts at the master (0.2); the others start silent, i.e. at
+    # the volume floor (the conductor never parks a speaker at true 0).
+    # Startup reconciliation converges whatever does not match the
+    # seeded phases.
     _set_speaker(hass, ARC, 0.2)
-    _set_speaker(hass, ERA, 0.0)
-    _set_speaker(hass, MOVE, 0.0)
+    _set_speaker(hass, ERA, FLOOR)
+    _set_speaker(hass, MOVE, FLOOR)
 
     # Load the real media_player services first, then replace them with mocks
     # (mocking before setup would be undone when the component registers the
@@ -213,7 +216,7 @@ async def test_startup_converges_divergent_volumes(hass: HomeAssistant) -> None:
     _entry, calls, _n = await _setup(hass, occupied=("kjokken",))
     writes = dict(_volume_writes(calls))
     assert writes[MOVE] == pytest.approx(0.24)  # 0.2 * 1.2
-    assert writes[ARC] == pytest.approx(0.0)  # fallback retired: kitchen is live
+    assert writes[ARC] == pytest.approx(FLOOR)  # fallback retired: kitchen is live
 
 
 async def test_second_stue_zone_splits_loudness(hass: HomeAssistant) -> None:
@@ -236,7 +239,7 @@ async def test_fallback_retires_when_other_zone_activates(hass: HomeAssistant) -
     await hass.async_block_till_done()
 
     writes = dict(_volume_writes(calls, n))
-    assert writes[ARC] == pytest.approx(0.0)  # fallback retires
+    assert writes[ARC] == pytest.approx(FLOOR)  # fallback retires
     assert writes[ERA] == pytest.approx(0.22)  # sole stue zone: full scale
 
 
@@ -248,7 +251,7 @@ async def test_hold_timer_releases_zone_after_vacancy(hass: HomeAssistant) -> No
 
     await _advance(hass, 61)  # hold_seconds=60
     writes = dict(_volume_writes(calls, n))
-    assert writes[MOVE] == pytest.approx(0.0)
+    assert writes[MOVE] == pytest.approx(FLOOR)
     assert writes[ARC] == pytest.approx(0.2)  # fallback takes back over
     assert hass.states.get("binary_sensor.sonos_conductor_zone_kjokken").state == "off"
 
@@ -330,7 +333,7 @@ async def test_undock_hands_speaker_over_redock_reclaims(hass: HomeAssistant) ->
     await hass.async_block_till_done()
     writes = dict(_volume_writes(calls, n))
     assert writes[MOVE] == pytest.approx(0.24)  # reclaimed at conductor target
-    assert writes[ARC] == pytest.approx(0.0)  # fallback retires again
+    assert writes[ARC] == pytest.approx(FLOOR)  # fallback retires again
 
 
 async def test_mute_fans_out(hass: HomeAssistant) -> None:
@@ -360,7 +363,7 @@ async def test_tv_solo_same_room_silences_other_room(hass: HomeAssistant) -> Non
     hass.states.async_set(TV, "playing")  # movie night
     await hass.async_block_till_done()
     writes = dict(_volume_writes(calls, n))
-    assert writes[MOVE] == pytest.approx(0.0)  # kitchen suppressed despite occupancy
+    assert writes[MOVE] == pytest.approx(FLOOR)  # kitchen suppressed despite occupancy
     assert writes[ARC] == pytest.approx(0.2)  # TV room at full scale
     _echo(hass, calls, n)
     n = len(calls["volume"])
@@ -388,7 +391,7 @@ async def test_tv_zone_mode_silences_same_room_zone(hass: HomeAssistant) -> None
 
     await _select_tv_solo(hass, "tv_zone")  # stricter: only the TV zone plays
     writes = dict(_volume_writes(calls, n))
-    assert writes == {ERA: pytest.approx(0.0)}  # Era silenced despite sharing the room
+    assert writes == {ERA: pytest.approx(FLOOR)}  # Era silenced despite sharing the room
     _echo(hass, calls, n)
     n = len(calls["volume"])
 

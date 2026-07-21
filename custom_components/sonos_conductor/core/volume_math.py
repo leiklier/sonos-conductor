@@ -9,6 +9,13 @@ from math import sqrt
 #: (Sonos quantizes volume to 1/100 steps; HA floats wobble below this).
 VOLUME_EPSILON = 0.005
 
+#: Silent targets land here instead of a true zero: Sonos turns its status
+#: LED green while a speaker sits at volume 0, which is distracting when
+#: zones dim in and out all day. Device volume 1/100 is inaudible in
+#: practice. Equal to the reverse-sync hard-zero guard (rule 4.1), so a
+#: floored speaker's own report is never mistaken for a user volume change.
+VOLUME_FLOOR = 0.01
+
 
 def clamp(value: float, low: float = 0.0, high: float = 1.0) -> float:
     return max(low, min(high, value))

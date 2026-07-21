@@ -15,6 +15,7 @@ from custom_components.sonos_conductor.core.events import (
 from custom_components.sonos_conductor.core.model import PresenceActivity, ZonePhase
 
 from .harness import (
+    FLOOR,
     KJOKKEN,
     SOFAKROK,
     Harness,
@@ -200,7 +201,7 @@ def test_home_empty_retires_forced_fallback() -> None:
     assert h.state.zones["sofakrok"].phase is ZonePhase.ACTIVE
     effects = h.fire(HomePresenceChanged(False), at=10.0)
     assert h.state.zones["sofakrok"].phase is ZonePhase.IDLE
-    expect_ramp(effects, SOFAKROK, 0.0, duration=5.0)  # fade_out
+    expect_ramp(effects, SOFAKROK, FLOOR, duration=5.0)  # fade_out
 
 
 def test_home_return_resumes_fallback() -> None:

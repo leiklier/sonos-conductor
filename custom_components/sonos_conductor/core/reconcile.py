@@ -58,7 +58,9 @@ def desired(engine: ConductorEngine, speaker_id: str) -> float | None:
         return None
     level = zone_level(engine, zone.zone_id)
     if level <= 0.0:
-        return 0.0
+        # Silent zones park at the floor, never a true zero (see
+        # VOLUME_FLOOR: Sonos shows a green status LED at volume 0).
+        return volume_math.VOLUME_FLOOR
     target = volume_math.speaker_target(
         engine.state.master, engine._trims[speaker_id], room_scale(engine, zone.room_id)
     )
@@ -70,7 +72,7 @@ def desired(engine: ConductorEngine, speaker_id: str) -> float | None:
     # The bed is a fraction of the *capped* active target (rule 3.4): a
     # gentle bed stays at half the active level even when night mode or a
     # duck has compressed everything toward its cap.
-    return level * target
+    return max(volume_math.VOLUME_FLOOR, level * target)
 
 
 def is_audible(engine: ConductorEngine, zone_id: str) -> bool:

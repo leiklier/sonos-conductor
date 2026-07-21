@@ -23,9 +23,9 @@ conflict, this spec wins.
   loudness is one full zone regardless of the bed.
 - **desired(speaker)** —
   - `None` (do not touch) if speaker is STANDALONE or engine disabled;
-  - `0.0` if `zone_level(zone) = 0`;
-  - else `zone_level × min(speaker_target(master, trim, room_scale),
-    duck_cap, night_cap)`
+  - `VOLUME_FLOOR` if `zone_level(zone) = 0`;
+  - else `max(VOLUME_FLOOR, zone_level × min(speaker_target(master, trim,
+    room_scale), duck_cap, night_cap))`
     where `duck_cap` = lowest `duck_volume` among active duck inputs (∞ if
     none) and `night_cap` = `night_volume_cap` while `night_mode` is on
     (∞ otherwise). The level multiplies the *capped* target: an idle bed is
@@ -34,6 +34,12 @@ conflict, this spec wins.
     at night plays half the cap, not up to the cap). This is the single
     point where both caps apply — fades, zone activations, rebalances,
     group joins, idle beds and startup all go through it.
+  - `VOLUME_FLOOR = 0.01` (constant, not a tunable): the engine never
+    commands a true zero, because Sonos turns its status LED green while a
+    speaker sits at volume 0. Device volume 1/100 is inaudible in practice.
+    "Silent" throughout this spec means *at the floor*. The floor equals
+    the rule-4.1 hard-zero guard, so a speaker parked at the floor never
+    reverse-syncs.
 - **reconcile(fade_context)** — for every speaker whose `desired ≠ commanded`
   (per `volumes_equal`), emit `RampVolume(speaker, desired, duration)` and set
   `commanded = desired`. The duration comes from the *cause*:
@@ -222,7 +228,8 @@ presence reaches.
     own business); zone not audible; global mute on; any duck input active;
     night mode on (capped volumes imply nothing about the master — but see
     rule 4.5); `now - max(any zone's last_transition, duck/tv/night-mode
-    change) < transition_suppression`; or `v ≤ 0.01` (hard-zero guard).
+    change) < transition_suppression`; or `v ≤ 0.01` (hard-zero guard,
+    `= VOLUME_FLOOR` — floored speakers imply nothing).
 
 4.2 Accepted reports debounce, they do not apply immediately: store
     `pending_external = v`, `StartTimer(external_debounce(speaker),

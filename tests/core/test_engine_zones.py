@@ -12,6 +12,7 @@ from custom_components.sonos_conductor.core.events import (
 from custom_components.sonos_conductor.core.model import ZonePhase
 
 from .harness import (
+    FLOOR,
     KJOKKEN,
     SOFAKROK,
     SPISEBORD,
@@ -74,7 +75,7 @@ class TestRule13HoldExpiry:
         h.vacate("kjokken", at=5.0)
         effects = h.fire_timer(timers.zone_release("kjokken"))  # at t=65
         assert h.now == 65.0
-        expect_ramp(effects, KJOKKEN, 0.0, duration=5.0)  # fade_out
+        expect_ramp(effects, KJOKKEN, FLOOR, duration=5.0)  # fade_out
         expect_ramp(effects, SOFAKROK, 0.3, duration=3.0)  # fallback re-forced
         assert h.state.zones["kjokken"].phase is ZonePhase.IDLE
         assert h.state.zones["kjokken"].last_transition == 65.0
@@ -119,7 +120,7 @@ class TestRule15Fallback:
         effects = h.occupy("kjokken", at=1.0)
         # No RELEASING detour for the forced fallback: straight to IDLE.
         assert h.state.zones["sofakrok"].phase is ZonePhase.IDLE
-        expect_ramp(effects, SOFAKROK, 0.0, duration=5.0)  # fade_out
+        expect_ramp(effects, SOFAKROK, FLOOR, duration=5.0)  # fade_out
         assert timer_starts(effects) == []
 
     def test_rule_1_5_fallback_reforced_when_last_zone_releases(self) -> None:

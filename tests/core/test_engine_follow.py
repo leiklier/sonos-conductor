@@ -22,6 +22,7 @@ from custom_components.sonos_conductor.core.events import (
 from custom_components.sonos_conductor.core.model import FollowMode, TvSoloMode, ZonePhase
 from tests.core.harness import (
     DOOR,
+    FLOOR,
     KJOKKEN,
     SOFAKROK,
     SPISEBORD,
@@ -211,8 +212,8 @@ def test_tv_solo_overrides_all_speakers() -> None:
     assert _audible(h, "sofakrok")
     assert not _audible(h, "kjokken")
     assert not _audible(h, "spisebord")
-    assert reconcile.desired(h.engine, KJOKKEN) == 0.0
-    assert reconcile.desired(h.engine, SPISEBORD) == 0.0
+    assert reconcile.desired(h.engine, KJOKKEN) == FLOOR
+    assert reconcile.desired(h.engine, SPISEBORD) == FLOOR
     assert reconcile.desired(h.engine, SOFAKROK) == MASTER * 1.0  # TV forces unity scale
 
 

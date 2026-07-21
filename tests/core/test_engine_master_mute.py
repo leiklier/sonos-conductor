@@ -13,6 +13,7 @@ from custom_components.sonos_conductor.core.events import (
 )
 
 from .harness import (
+    FLOOR,
     KJOKKEN,
     SOFAKROK,
     SPISEBORD,
@@ -45,7 +46,7 @@ class TestRule3Master:
         h.occupy("kjokken", at=0.0)
         effects = h.fire(SetMaster(-0.3), at=1.0)
         assert h.state.master == 0.0
-        expect_ramp(effects, KJOKKEN, 0.0, duration=0.0)
+        expect_ramp(effects, KJOKKEN, FLOOR, duration=0.0)  # silent = at the floor
 
     def test_rule_3_1_while_muted_stores_only(self) -> None:
         h = Harness()

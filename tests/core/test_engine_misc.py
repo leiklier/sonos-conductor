@@ -36,6 +36,7 @@ from custom_components.sonos_conductor.core.model import (
 
 from .harness import (
     DOOR,
+    FLOOR,
     KJOKKEN,
     SOFAKROK,
     Harness,
@@ -61,7 +62,7 @@ class TestRule101Trim:
         h = Harness()
         h.occupy("kjokken", at=0.0)
         effects = h.fire(SetTrim(KJOKKEN, -1.0), at=1.0)
-        expect_ramp(effects, KJOKKEN, 0.0, duration=2.0)
+        expect_ramp(effects, KJOKKEN, FLOOR, duration=2.0)
 
     def test_trim_above_one_clamps_target_not_trim(self) -> None:
         h = Harness()
@@ -138,7 +139,7 @@ class TestBoundaries:
         h = Harness()
         h.occupy("kjokken", at=0.0)
         effects = h.fire(SetMaster(0.0), at=1.0)
-        expect_ramp(effects, KJOKKEN, 0.0, duration=0.0)
+        expect_ramp(effects, KJOKKEN, FLOOR, duration=0.0)  # silent = at the floor
 
     def test_float_dust_never_causes_spurious_ramps(self) -> None:
         h = Harness()
@@ -156,7 +157,7 @@ class TestBoundaries:
         h = Harness()
         effects = h.fire(TvPlayingChanged("kjokken", True), at=0.0)
         expect_ramp(effects, KJOKKEN, 0.36, duration=3.0)
-        expect_ramp(effects, SOFAKROK, 0.0, duration=5.0)  # fallback yields
+        expect_ramp(effects, SOFAKROK, FLOOR, duration=5.0)  # fallback yields
         effects = h.fire(TvPlayingChanged("kjokken", False), at=1.0)
         assert timer_starts(effects) == [StartTimer(timers.zone_release("kjokken"), 60.0)]
 
@@ -198,7 +199,7 @@ class TestSingleSpeaker:
         effects = h.vacate("solo", at=5.0)
         assert timer_starts(effects) == [StartTimer(timers.zone_release("solo"), 10.0)]
         effects = h.fire_timer(timers.zone_release("solo"))
-        expect_ramp(effects, self.SPEAKER, 0.0, duration=5.0)
+        expect_ramp(effects, self.SPEAKER, FLOOR, duration=5.0)
 
     def test_single_fallback_zone_is_always_audible(self) -> None:
         config, snapshot = _single_speaker(fallback=True)
