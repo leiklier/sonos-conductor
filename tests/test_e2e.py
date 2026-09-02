@@ -226,8 +226,9 @@ async def test_second_stue_zone_splits_loudness(hass: HomeAssistant) -> None:
     await hass.async_block_till_done()
 
     writes = dict(_volume_writes(calls, n))
-    assert writes[ERA] == pytest.approx(0.2 * 1.1 / SQRT2, abs=1e-4)
-    assert writes[ARC] == pytest.approx(0.2 * 1.0 / SQRT2, abs=1e-4)
+    # Writes land on device hundredths: 0.1556 -> 0.16, 0.1414 -> 0.14.
+    assert writes[ERA] == pytest.approx(round(0.2 * 1.1 / SQRT2, 2))
+    assert writes[ARC] == pytest.approx(round(0.2 * 1.0 / SQRT2, 2))
     assert MOVE not in writes  # different room: untouched
     assert hass.states.get("binary_sensor.sonos_conductor_zone_spisebord").state == "on"
 

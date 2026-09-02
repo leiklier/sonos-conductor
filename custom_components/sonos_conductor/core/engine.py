@@ -63,7 +63,7 @@ from .model import (
     ZoneState,
 )
 from .plan import Plan
-from .volume_math import clamp, implied_master
+from .volume_math import MASTER_PRECISION, clamp, implied_master
 
 _NEG_INF = float("-inf")
 
@@ -74,8 +74,8 @@ class ConductorEngine:
     def __init__(self, config: ConductorConfig, snapshot: InitialSnapshot) -> None:
         self.config = config
         self.state: EngineState = EngineState()
-        #: Mutable trim shadow, adjustable at runtime via SetTrim (rule 10.1).
-        self._trims: dict[str, float] = {s.speaker_id: s.trim for s in config.speakers}
+        # Runtime trims start at the configured values (rule 10.1).
+        self.state.trims = {s.speaker_id: s.trim for s in config.speakers}
         #: Timer ids the engine believes are pending at the adapter.
         self._pending_timers: set[str] = set()
         #: Monotonic timestamp of the last duck / TV-mode / suppression-set
@@ -149,14 +149,14 @@ class ConductorEngine:
             # 9.2: median implied master over audible zones with known volume.
             implied = [
                 implied_master(
-                    volume, self._trims[z.speaker_id], reconcile.room_scale(self, z.room_id)
+                    volume, state.trims[z.speaker_id], reconcile.room_scale(self, z.room_id)
                 )
                 for z in self.config.zones
                 if reconcile.is_audible(self, z.zone_id)
                 and (volume := state.speakers[z.speaker_id].volume) is not None
             ]
             if implied:
-                state.master = float(median(implied))
+                state.master = round(float(median(implied)), MASTER_PRECISION)
 
     def start(self, now: float) -> list[Effect]:
         """Adopt the snapshot and return gentle startup effects (section 9).

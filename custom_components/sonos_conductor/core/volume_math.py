@@ -9,6 +9,11 @@ from math import sqrt
 #: (Sonos quantizes volume to 1/100 steps; HA floats wobble below this).
 VOLUME_EPSILON = 0.005
 
+#: Decimal places kept for the master volume. Fine enough that a 1/100 device
+#: step through any trim/scale round-trips exactly; coarse enough that
+#: division artefacts never surface in published state.
+MASTER_PRECISION = 4
+
 #: Silent targets land here instead of a true zero: Sonos turns its status
 #: LED green while a speaker sits at volume 0, which is distracting when
 #: zones dim in and out all day. Device volume 1/100 is inaudible in
@@ -46,11 +51,15 @@ def speaker_target(master: float, trim: float, scale: float) -> float:
 
 
 def implied_master(volume: float, trim: float, scale: float) -> float:
-    """Reverse mapping: a speaker's device volume -> implied master volume."""
+    """Reverse mapping: a speaker's device volume -> implied master volume.
+
+    Rounded to :data:`MASTER_PRECISION` so a master derived from a device
+    report is as clean as one set directly (spec 4.3).
+    """
     effective = trim * scale
     if effective <= 0.0:
         return 0.0
-    return clamp(volume / effective)
+    return round(clamp(volume / effective), MASTER_PRECISION)
 
 
 def volumes_equal(a: float | None, b: float | None) -> bool:

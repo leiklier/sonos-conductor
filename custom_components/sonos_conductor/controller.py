@@ -10,7 +10,19 @@ Race-condition strategy (docs/ARCHITECTURE.md):
   are consumed as acknowledgements and never reach the engine, so our own
   fades can never masquerade as user input.
 - One cancellable ramp per speaker: a new ``RampVolume`` atomically cancels the
-  in-flight ramp for that speaker.
+  in-flight ramp for that speaker. Volume reports that arrive while a ramp is
+  in flight and are not echoes are dropped: the next step overwrites them
+  anyway (spec 4.4), and feeding a mid-ramp value to reverse sync would let
+  the master drift to a transient.
+- Every volume written is quantized to Sonos' 1/100 resolution *before* it is
+  recorded in the ledger, so a device report equals the ledger entry exactly
+  (a step landing on a half-hundredth would otherwise read back off by
+  exactly the ledger tolerance and leak as an external report). Ramps step
+  through distinct hundredths only — no two writes of the same device value.
+- A speaker that is not playing gets its target in one write instead of a
+  ramp: nobody can hear a fade on a silent speaker, and ramping there is the
+  bulk of all volume traffic. Volumes stay converged at all times, so
+  playback can start at any moment at the right level.
 - Both engine timers and ramp steps are scheduled with
   :func:`homeassistant.helpers.event.async_call_later` so tests can drive time
   deterministically via ``async_fire_time_changed``.
@@ -41,7 +53,7 @@ import logging
 import time
 from collections import deque
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, fields
+from dataclasses import asdict, dataclass, fields
 from typing import Any
 
 from homeassistant.components.media_player import (
@@ -58,6 +70,7 @@ from homeassistant.const import (
     ATTR_ENTITY_ID,
     SERVICE_VOLUME_MUTE,
     SERVICE_VOLUME_SET,
+    STATE_BUFFERING,
     STATE_ON,
     STATE_PLAYING,
     STATE_UNAVAILABLE,
@@ -123,14 +136,52 @@ CONF_LAST_MASTER = "last_master"
 ECHO_TTL = 3.0
 #: Nominal interval between ramp steps.
 RAMP_STEP_INTERVAL = 0.25
-#: Smallest useful volume step (Sonos quantizes to 1/100).
-RAMP_MIN_STEP = 0.005
+#: Smallest useful volume step: one Sonos device step (1/100).
+RAMP_MIN_STEP = 0.01
+#: Speaker states in which a fade is audible; elsewhere volumes are snapped.
+AUDIBLE_STATES = (STATE_PLAYING, STATE_BUFFERING)
 #: Debounce before persisting engine master into entry options.
 MASTER_PERSIST_DELAY = 10.0
 
 UNAVAILABLE_STATES = (STATE_UNAVAILABLE, STATE_UNKNOWN)
 #: Media player states that count as "TV is playing" for zone aggregation.
 TV_PLAYING_STATES = (STATE_ON, STATE_PLAYING)
+
+
+# ---------------------------------------------------------------------------
+# Volume quantization (the device contract)
+# ---------------------------------------------------------------------------
+
+
+def _quantize(volume: float) -> float:
+    """Snap a 0..1 volume to what the Sonos integration will actually set.
+
+    HA's Sonos integration sends ``round(volume * 100)`` to the device and
+    reports ``that / 100`` back. Computing it the same way (not ``round(v, 2)``,
+    which can differ at half-steps) keeps the echo ledger exact.
+    """
+    return round(volume * 100) / 100
+
+
+def _ramp_values(current: float, target: float, duration: float) -> list[float]:
+    """Plan the device values of a fade from ``current`` to ``target``.
+
+    Both inputs are already quantized. Steps are whole device hundredths,
+    each distinct from the last, so every write moves the device and every
+    echo matches. Returns ``[target]`` when the fade is too short to split.
+    """
+    device_steps = round(abs(target - current) / RAMP_MIN_STEP)
+    steps = min(max(2, round(duration / RAMP_STEP_INTERVAL)), device_steps)
+    if steps <= 1:
+        return [target]
+    delta = target - current
+    values: list[float] = []
+    for i in range(1, steps + 1):
+        value = _quantize(current + delta * i / steps)
+        if not values or value != values[-1]:
+            values.append(value)
+    values[-1] = target
+    return values
 
 
 # ---------------------------------------------------------------------------
@@ -483,6 +534,32 @@ class SonosConductorController:
         self._flush_master()
 
     @callback
+    def diagnostics(self) -> dict[str, Any]:
+        """Adapter-side state for the diagnostics download."""
+        now = time.monotonic()
+        return {
+            "started": self._started,
+            "queue_depth": self._queue.qsize(),
+            "pending_timers": sorted(self._timers),
+            "ramps_in_flight": sorted(self._ramps),
+            "volume_echo": {
+                speaker_id: [
+                    {"value": value, "ttl": round(deadline - now, 3)}
+                    for value, deadline in entries
+                    if deadline > now
+                ]
+                for speaker_id, entries in self._volume_echo.items()
+                if any(deadline > now for _value, deadline in entries)
+            },
+            "speaker_views": {
+                speaker_id: asdict(view) for speaker_id, view in self._speaker_views.items()
+            },
+            "presence_hold": dict(self._presence_hold),
+            "persisted_master": self._persisted_master,
+            "pending_master": self._pending_master,
+        }
+
+    @callback
     def _ensure_drain(self) -> None:
         """Ensure exactly one drain task is processing the queue.
 
@@ -583,7 +660,12 @@ class SonosConductorController:
         if volume is not None and not volumes_equal(volume, view.volume):
             view.volume = volume
             if not self._consume_volume_echo(entity_id, volume):
-                self.submit(ExternalVolume(entity_id, volume))
+                if entity_id in self._ramps:
+                    # Mid-ramp reports are transients (ours or the user's);
+                    # the ramp's next step overwrites them either way.
+                    _LOGGER.debug("Ignoring volume %.3f on %s: ramp in flight", volume, entity_id)
+                else:
+                    self.submit(ExternalVolume(entity_id, volume))
         if raw_muted is not None and bool(raw_muted) != view.muted:
             view.muted = bool(raw_muted)
             if not self._consume_mute_echo(entity_id, bool(raw_muted)):
@@ -771,21 +853,17 @@ class SonosConductorController:
         if state is None or state.state in UNAVAILABLE_STATES:
             # Speaker is away; the engine reconciles again when it returns.
             return
-        target = round(effect.target, 4)
+        target = _quantize(effect.target)
         current = state.attributes.get(ATTR_MEDIA_VOLUME_LEVEL)
-        if effect.duration <= 0 or current is None:
+        if effect.duration <= 0 or current is None or state.state not in AUDIBLE_STATES:
+            # Nothing to hear (or nothing to fade from): converge in one write.
             await self._async_write_volume(speaker_id, target)
             return
-        delta = target - current
-        steps = max(2, round(effect.duration / RAMP_STEP_INTERVAL))
-        if abs(delta) / steps < RAMP_MIN_STEP:
-            steps = int(abs(delta) / RAMP_MIN_STEP)
-        if steps <= 1:
+        values = _ramp_values(_quantize(current), target, effect.duration)
+        if len(values) <= 1:
             await self._async_write_volume(speaker_id, target)
             return
-        values = [round(current + delta * i / steps, 4) for i in range(1, steps + 1)]
-        values[-1] = target
-        interval = effect.duration / steps
+        interval = effect.duration / len(values)
         ramp = _Ramp()
         self._ramps[speaker_id] = ramp
         self._schedule_ramp_step(ramp, speaker_id, values, 0, interval)
@@ -803,15 +881,19 @@ class SonosConductorController:
                 if state is None or state.state in UNAVAILABLE_STATES:
                     self._finish_ramp(ramp, speaker_id)
                     return
-                await self._async_write_volume(speaker_id, values[index])
+                step = index
+                if state.state not in AUDIBLE_STATES:
+                    # Playback stopped mid-fade: nobody hears the rest.
+                    step = len(values) - 1
+                await self._async_write_volume(speaker_id, values[step])
             except Exception:
                 _LOGGER.exception("Ramp step for %s failed", speaker_id)
                 self._finish_ramp(ramp, speaker_id)
                 return
             if ramp.cancelled:
                 return
-            if index + 1 < len(values):
-                self._schedule_ramp_step(ramp, speaker_id, values, index + 1, interval)
+            if step + 1 < len(values):
+                self._schedule_ramp_step(ramp, speaker_id, values, step + 1, interval)
             else:
                 self._finish_ramp(ramp, speaker_id)
 

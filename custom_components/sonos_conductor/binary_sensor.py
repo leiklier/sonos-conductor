@@ -95,7 +95,7 @@ class SonosConductorZoneSensor(ConductorEntity, BinarySensorEntity):
         if zone_state is None:
             return {"room": self._zone.room_id}
         scale = _room_scale_for(config, state, self._zone.room_id)
-        trim = config.speaker(self._zone.speaker_id).trim
+        trim = state.trims.get(self._zone.speaker_id, config.speaker(self._zone.speaker_id).trim)
         level = _zone_level(config, state, self._zone)
         return {
             "phase": str(zone_state.phase),

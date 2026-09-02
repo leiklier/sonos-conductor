@@ -64,6 +64,7 @@ class SonosConductorStateSensor(ConductorEntity, SensorEntity):
                     "commanded": speaker.commanded,
                     "volume": speaker.volume,
                     "docked": speaker.docked,
+                    "trim": state.trims.get(speaker_id),
                 }
                 for speaker_id, speaker in state.speakers.items()
             },

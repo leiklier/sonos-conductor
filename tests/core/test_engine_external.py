@@ -99,7 +99,8 @@ class TestRule43Apply:
         assert h.state.master == pytest.approx(expected_master)
         expect_no_ramp(effects, SOFAKROK)  # reporter already there
         assert h.state.speakers[SOFAKROK].commanded == pytest.approx(0.4)
-        expect_ramp(effects, SPISEBORD, 0.4 * 1.1, duration=2.0)  # rebalance
+        # Rebalance from the (rounded) implied master, not the raw report.
+        expect_ramp(effects, SPISEBORD, expected_master * 1.1 * STUE_2, duration=2.0)
 
     def test_rule_4_3_below_threshold_no_change(self) -> None:
         h = Harness()
