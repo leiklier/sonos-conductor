@@ -92,7 +92,7 @@ def test_race_r5_debounced_reports_single_master_update() -> None:
     assert h.state.master == pytest.approx(implied_master(0.48, 1.0, STUE_2))
     # Exactly one rebalance ramp (spisebord); the reporter is left alone.
     assert [r.speaker_id for r in ramps(effects)] == [SPISEBORD]
-    expect_ramp(effects, SPISEBORD, 0.48 * 1.1, duration=2.0)
+    expect_ramp(effects, SPISEBORD, h.state.master * 1.1 * STUE_2, duration=2.0)
 
 
 def test_race_r6_undock_mid_fade_then_redock() -> None:

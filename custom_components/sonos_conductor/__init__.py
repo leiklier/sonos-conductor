@@ -6,8 +6,9 @@ import logging
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant
+from homeassistant.const import ATTR_RESTORED, Platform
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import entity_registry as er
 
 from .const import DOMAIN
 from .controller import (
@@ -57,8 +58,34 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     if controller is not None:
+        _sweep_orphaned_entities(hass, entry)
         await controller.async_start()
     return True
+
+
+@callback
+def _sweep_orphaned_entities(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Drop registry entries the current configuration no longer provides.
+
+    Unique ids embed speaker / zone ids, so removing or renaming one in the
+    options flow leaves its old trim number, volume sensor and zone sensor
+    behind as permanently ``unavailable`` registry entries. Runs after the
+    platforms have added their entities: anything registered to this entry
+    that has no live state (or only the registry's restored placeholder) is
+    stale. Entities the user disabled are never touched — they have no state
+    by design.
+    """
+    registry = er.async_get(hass)
+    for entity_entry in er.async_entries_for_config_entry(registry, entry.entry_id):
+        if entity_entry.disabled_by is not None:
+            continue
+        state = hass.states.get(entity_entry.entity_id)
+        if state is None or state.attributes.get(ATTR_RESTORED):
+            _LOGGER.info(
+                "Removing orphaned entity %s: not provided by the current configuration",
+                entity_entry.entity_id,
+            )
+            registry.async_remove(entity_entry.entity_id)
 
 
 async def _async_options_updated(hass: HomeAssistant, entry: ConfigEntry) -> None:

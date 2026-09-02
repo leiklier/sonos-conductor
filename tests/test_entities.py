@@ -155,7 +155,44 @@ async def test_trim_numbers(hass: HomeAssistant, monkeypatch) -> None:
     )
     await hass.async_block_till_done()
     assert fake.events_of(SetTrim)[-1] == SetTrim(MOVE, 1.5)
-    assert hass.states.get(trim).state == "1.5"  # optimistic
+    assert hass.states.get(trim).state == "1.5"  # mirrors EngineState.trims
+
+
+async def test_trim_number_restores_runtime_trim(hass: HomeAssistant, monkeypatch) -> None:
+    """A restored trim that differs from the configured one is pushed as SetTrim."""
+    mock_restore_cache(hass, (State("number.sonos_conductor_trim_kjokken_move", "1.45"),))
+    entry, controller, fake = await setup_conductor(hass, monkeypatch)
+    assert fake.events_of(SetTrim) == [SetTrim(MOVE, 1.45)]
+    trim = entity_id_for(hass, "number", f"{entry.entry_id}_trim_{MOVE}")
+    assert hass.states.get(trim).state == "1.45"
+    # The zone sensor's target follows the runtime trim, not the config.
+    fake.state.zones["kjokken"].phase = ZonePhase.ACTIVE
+    async_dispatcher_send(hass, controller.signal)
+    await hass.async_block_till_done()
+    zone = entity_id_for(hass, "binary_sensor", f"{entry.entry_id}_zone_kjokken")
+    assert hass.states.get(zone).attributes["target_volume"] == pytest.approx(0.2 * 1.45)
+
+
+async def test_trim_number_restore_clamps_and_ignores_invalid(
+    hass: HomeAssistant, monkeypatch
+) -> None:
+    mock_restore_cache(
+        hass,
+        (
+            State("number.sonos_conductor_trim_kjokken_move", "9.0"),  # clamped to 2.0
+            State("number.sonos_conductor_trim_sofakrok_sonos", "unknown"),  # ignored
+        ),
+    )
+    _entry, _controller, fake = await setup_conductor(hass, monkeypatch)
+    assert fake.events_of(SetTrim) == [SetTrim(MOVE, 2.0)]
+
+
+async def test_trim_number_restore_matching_value_is_silent(
+    hass: HomeAssistant, monkeypatch
+) -> None:
+    mock_restore_cache(hass, (State("number.sonos_conductor_trim_kjokken_move", "1.2"),))
+    _entry, _controller, fake = await setup_conductor(hass, monkeypatch)
+    assert fake.events_of(SetTrim) == []
 
 
 # ---------------------------------------------------------------------------
@@ -516,6 +553,7 @@ async def test_diagnostics_sensor(hass: HomeAssistant, monkeypatch) -> None:
         "commanded": None,
         "volume": 0.2,
         "docked": True,
+        "trim": 1.0,
     }
     assert state.attributes["active_duck_inputs"] == []
 
@@ -527,6 +565,55 @@ async def test_diagnostics_sensor(hass: HomeAssistant, monkeypatch) -> None:
     state = hass.states.get(sensor)
     assert state.state == "disabled"
     assert state.attributes["active_duck_inputs"] == ["binary_sensor.inngangsdor"]
+
+
+# ---------------------------------------------------------------------------
+# orphaned registry entries
+# ---------------------------------------------------------------------------
+
+
+async def test_orphaned_registry_entries_are_swept_on_setup(
+    hass: HomeAssistant, monkeypatch
+) -> None:
+    """Entities from speakers/zones no longer configured are removed; disabled ones stay."""
+    import custom_components.sonos_conductor as integration
+    from tests.fake_engine import FakeEngine
+    from tests.test_controller import seed_world
+
+    monkeypatch.setattr(integration, "ConductorEngine", FakeEngine)
+    seed_world(hass)
+    entry = MockConfigEntry(domain=DOMAIN, title="Sonos Conductor", data={}, options=OPTIONS)
+    entry.add_to_hass(hass)
+    registry = er.async_get(hass)
+
+    # Leftovers from a speaker and a zone that were removed from the options.
+    stale_trim = registry.async_get_or_create(
+        "number", DOMAIN, f"{entry.entry_id}_trim_media_player.gone", config_entry=entry
+    )
+    stale_zone = registry.async_get_or_create(
+        "binary_sensor", DOMAIN, f"{entry.entry_id}_zone_gone", config_entry=entry
+    )
+    # HA's registry writes this placeholder for registered-but-absent entities.
+    hass.states.async_set(stale_zone.entity_id, "unavailable", {"restored": True})
+    # A current entity the user disabled: no state by design, must survive.
+    disabled = registry.async_get_or_create(
+        "sensor",
+        DOMAIN,
+        f"{entry.entry_id}_volume_{SOFA}",
+        config_entry=entry,
+        disabled_by=er.RegistryEntryDisabler.USER,
+    )
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert registry.async_get(stale_trim.entity_id) is None
+    assert registry.async_get(stale_zone.entity_id) is None
+    assert registry.async_get(disabled.entity_id) is not None
+    # The live entities are all still registered.
+    assert registry.async_get(entity_id_for(hass, "number", f"{entry.entry_id}_trim_{MOVE}"))
+    zone = entity_id_for(hass, "binary_sensor", f"{entry.entry_id}_zone_kjokken")
+    assert registry.async_get(zone)
 
 
 # ---------------------------------------------------------------------------

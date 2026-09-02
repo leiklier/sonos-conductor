@@ -265,6 +265,10 @@ class EngineState:
     zones: dict[str, ZoneState] = field(default_factory=dict)
     speakers: dict[str, SpeakerState] = field(default_factory=dict)
     duck_active: dict[str, bool] = field(default_factory=dict)
+    #: Runtime per-speaker trims (rule 10.1): seeded from ``SpeakerConfig``,
+    #: changed by ``SetTrim``. Published so adapters compute targets and
+    #: restore trims from here, never from the static config.
+    trims: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)

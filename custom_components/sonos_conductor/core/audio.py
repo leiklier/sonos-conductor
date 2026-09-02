@@ -21,7 +21,7 @@ from .events import (
     SetNightMode,
     SetTrim,
 )
-from .volume_math import VOLUME_FLOOR, clamp, implied_master, volumes_equal
+from .volume_math import MASTER_PRECISION, VOLUME_FLOOR, clamp, implied_master, volumes_equal
 
 if TYPE_CHECKING:
     from .engine import ConductorEngine
@@ -38,7 +38,7 @@ _HARD_ZERO = VOLUME_FLOOR
 
 
 def on_set_master(engine: ConductorEngine, event: SetMaster, plan: Plan) -> None:
-    engine.state.master = clamp(event.value)  # 3.1
+    engine.state.master = round(clamp(event.value), MASTER_PRECISION)  # 3.1
     if not engine.state.enabled or engine.state.muted:
         return  # store only; reconcile happens on unmute / enable
     reconcile.reconcile(engine, plan, engine.config.tunables.master_fade)
@@ -185,7 +185,7 @@ def on_debounce_fired(engine: ConductorEngine, speaker_id: str, now: float, plan
     if zone is None:  # unreachable: sync_allowed guarantees a zone
         return
     implied = implied_master(
-        volume, engine._trims[speaker_id], reconcile.room_scale(engine, zone.room_id)
+        volume, engine.state.trims[speaker_id], reconcile.room_scale(engine, zone.room_id)
     )
     if abs(implied - engine.state.master) <= engine.config.tunables.sync_threshold:
         return
@@ -222,7 +222,7 @@ def on_duck(engine: ConductorEngine, event: DuckChanged, now: float, plan: Plan)
 
 
 def on_set_trim(engine: ConductorEngine, event: SetTrim, plan: Plan) -> None:
-    if event.speaker_id not in engine._trims:  # 10.4
+    if event.speaker_id not in engine.state.trims:  # 10.4
         return
-    engine._trims[event.speaker_id] = max(0.0, event.trim)  # 10.1
+    engine.state.trims[event.speaker_id] = max(0.0, event.trim)  # 10.1
     reconcile.reconcile(engine, plan, engine.config.tunables.rebalance_fade)

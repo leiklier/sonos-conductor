@@ -389,6 +389,103 @@ async def test_new_ramp_cancels_in_flight_ramp(hass: HomeAssistant, monkeypatch,
     assert [call.data["volume_level"] for call in calls] == [0.25, 0.1]
 
 
+async def test_ramp_writes_land_on_device_hundredths(
+    hass: HomeAssistant, monkeypatch, freezer
+) -> None:
+    """Steps are whole device steps, so every echo matches the ledger exactly."""
+    _, controller, fake = await setup_conductor(hass, monkeypatch)
+    calls = async_mock_service(hass, "media_player", "volume_set")
+
+    # 0.2 -> 0.235 over 1 s: the target lands on 0.24 (device), 4 steps of 0.01.
+    fake.script([RampVolume(SOFA, 0.235, 1.0)])
+    controller.submit(SetMaster(0.235))
+    await hass.async_block_till_done()
+    for _ in range(4):
+        await advance(hass, freezer, 0.26)
+    values = [call.data["volume_level"] for call in calls]
+    assert values == [0.21, 0.22, 0.23, 0.24]
+
+    # The device reports each step back as the same hundredth: all echoes.
+    for value in values:
+        set_speaker(hass, SOFA, volume=value)
+        await hass.async_block_till_done()
+    assert fake.events_of(ExternalVolume) == []
+
+
+async def test_ramp_never_repeats_a_device_value(hass: HomeAssistant, monkeypatch, freezer) -> None:
+    """A long fade over a small delta writes each hundredth once."""
+    _, controller, fake = await setup_conductor(hass, monkeypatch)
+    calls = async_mock_service(hass, "media_player", "volume_set")
+
+    fake.script([RampVolume(SOFA, 0.22, 3.0)])  # 12 nominal steps, only 2 device steps
+    controller.submit(SetMaster(0.22))
+    await hass.async_block_till_done()
+    for _ in range(3):
+        await advance(hass, freezer, 1.6)
+    assert [call.data["volume_level"] for call in calls] == [0.21, 0.22]
+
+
+async def test_ramp_snaps_when_speaker_is_not_playing(
+    hass: HomeAssistant, monkeypatch, freezer
+) -> None:
+    """No one hears a fade on a silent speaker: converge in one write."""
+    _, controller, fake = await setup_conductor(hass, monkeypatch)
+    calls = async_mock_service(hass, "media_player", "volume_set")
+    set_speaker(hass, SOFA, state="paused")
+    await hass.async_block_till_done()
+
+    fake.script([RampVolume(SOFA, 0.4, 1.0)])
+    controller.submit(SetMaster(0.4))
+    await hass.async_block_till_done()
+    assert [call.data["volume_level"] for call in calls] == [0.4]
+    await advance(hass, freezer, 2.0)
+    assert len(calls) == 1
+
+
+async def test_ramp_snaps_to_target_when_playback_stops_mid_fade(
+    hass: HomeAssistant, monkeypatch, freezer
+) -> None:
+    _, controller, fake = await setup_conductor(hass, monkeypatch)
+    calls = async_mock_service(hass, "media_player", "volume_set")
+
+    fake.script([RampVolume(SOFA, 0.4, 1.0)])
+    controller.submit(SetMaster(0.4))
+    await hass.async_block_till_done()
+    await advance(hass, freezer, 0.26)
+    assert [call.data["volume_level"] for call in calls] == [0.25]
+
+    set_speaker(hass, SOFA, state="paused", volume=0.25)
+    await hass.async_block_till_done()
+    await advance(hass, freezer, 0.26)
+    assert [call.data["volume_level"] for call in calls] == [0.25, 0.4]
+    await advance(hass, freezer, 2.0)
+    assert len(calls) == 2
+
+
+async def test_volume_reports_during_ramp_are_not_external(
+    hass: HomeAssistant, monkeypatch, freezer
+) -> None:
+    """A non-echo report mid-ramp is a transient the next step overwrites."""
+    _, controller, fake = await setup_conductor(hass, monkeypatch)
+    async_mock_service(hass, "media_player", "volume_set")
+
+    fake.script([RampVolume(SOFA, 0.4, 1.0)])
+    controller.submit(SetMaster(0.4))
+    await hass.async_block_till_done()
+    await advance(hass, freezer, 0.26)
+
+    set_speaker(hass, SOFA, volume=0.6)  # user grabbed the knob mid-fade
+    await hass.async_block_till_done()
+    assert fake.events_of(ExternalVolume) == []
+
+    # Once the ramp has finished, reports are external again.
+    for _ in range(3):
+        await advance(hass, freezer, 0.26)
+    set_speaker(hass, SOFA, volume=0.7)
+    await hass.async_block_till_done()
+    assert fake.events_of(ExternalVolume) == [ExternalVolume(SOFA, 0.7)]
+
+
 async def test_ramp_skipped_for_unavailable_speaker(
     hass: HomeAssistant, monkeypatch, freezer
 ) -> None:

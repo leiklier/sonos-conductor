@@ -31,11 +31,12 @@ custom_components/sonos_conductor/
 ├── config_flow.py        Config + options flow built on discovery suggestions
 ├── media_player.py       Master media player (HomeKit-friendly proxy)
 ├── event.py              HomeKit remote key presses (automation trigger)
-├── number.py             Per-speaker trim
+├── number.py             Per-speaker trim (restored across restarts)
 ├── switch.py             enabled / keep_grouped / night_mode
 ├── select.py             tv_solo (off / same_room / tv_zone) + follow_mode (per_zone / per_room / all_speakers) + idle_attenuation (gentle / balanced / max)
 ├── binary_sensor.py      Per-zone activity (replaces template helpers)
-└── sensor.py             Engine diagnostics + per-speaker volume mirrors
+├── sensor.py             Engine diagnostics + per-speaker volume mirrors
+└── diagnostics.py        Diagnostics download (options, engine state, adapter internals)
 ```
 
 **The dependency rule:** `core/` never imports from Home Assistant or from the
@@ -146,10 +147,21 @@ sync into the global mute the same way.
    is recorded (entity, value, TTL ≈ 3 s). Incoming state events matching a
    pending write (ε = 0.005) are consumed as acknowledgements, not fed to the
    engine. Our own fades can never be mistaken for user input — this replaces
-   the old system's fragile `for:`-duration guesswork.
+   the old system's fragile `for:`-duration guesswork. Every value written is
+   first quantized to the Sonos device resolution exactly as HA's Sonos
+   integration does (`round(v * 100) / 100`), so the device's report equals
+   the ledger entry — a raw target landing on a half-hundredth would read back
+   off by exactly ε and leak as a phantom user change.
 3. **One cancellable ramp per speaker.** A new target for a speaker atomically
    cancels its in-flight ramp. (The old `mode: parallel` fade script could
-   interleave two ramps on the same speaker — the flagship race.)
+   interleave two ramps on the same speaker — the flagship race.) Ramps step
+   through distinct device hundredths only, and non-echo volume reports that
+   arrive while a ramp is in flight are dropped — the next step overwrites them
+   regardless (spec 4.4), and a mid-fade transient must never seed reverse
+   sync. A speaker that is not playing/buffering is not ramped at all: its
+   target is written once (nobody hears a fade on a silent speaker, and idle
+   fades were the bulk of all device traffic); a ramp whose speaker stops
+   playing mid-fade snaps to its target.
 4. **Debounce + suppression in the engine, not in YAML.** Stability windows
    are explicit engine state driven by injected monotonic time — deterministic
    and unit-tested, not wall-clock-dependent template hacks.
@@ -195,9 +207,16 @@ be absent; re-docking triggers repair too.
 | `select.<name>_idle_attenuation` | Idle attenuation (rule 3.4): gentle / balanced / max. How much volume idle zones keep as a background bed; max = silent (default). Restored across restarts. |
 | `switch.<name>_keep_grouped` | Runtime toggle for group repair. |
 | `binary_sensor.<name>_zone_<zone>` | Zone audible? Attributes: FSM state, target volume, room scale. Replaces the `*_audio_zone` template helpers. |
-| `sensor.<name>_state` | Diagnostics: engine state snapshot, last event, effect counts. |
+| `sensor.<name>_state` | Diagnostics: engine state snapshot (master, modes, per-speaker commanded/volume/trim, active duck inputs). |
 | `sensor.<name>_volume_<speaker>` | A speaker's actual device volume as a read-only percentage (mirrors the underlying `media_player`'s `volume_level`). Watch fades, profile changes and idle beds without opening the Sonos app. |
-| `number.<name>_trim_<speaker>` | Per-speaker loudness trim, adjustable at runtime. |
+| `number.<name>_trim_<speaker>` | Per-speaker loudness trim, adjustable at runtime. Reads the engine's runtime trim; restored across restarts (a restored value that differs from the configured trim is pushed back as `SetTrim`). |
+
+Registry entries left behind by speakers or zones removed from the options
+(their unique ids embed the speaker / zone id) are swept on every setup;
+user-disabled entities are left alone. The integration also implements the
+**diagnostics download** (Settings → Devices → ⋮ → Download diagnostics):
+entry options, the full published engine state, and adapter internals (pending
+timers, ramps in flight, live echo ledger, per-speaker views).
 
 ## Config flow & discovery
 

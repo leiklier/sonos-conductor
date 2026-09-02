@@ -188,8 +188,12 @@ presence reaches.
 
 ## 3. Master volume & night mode
 
-3.1 `SetMaster(v)`: clamp to [0,1], store, reconcile with `master_fade`.
-    While muted: store only — reconcile happens on unmute.
+3.1 `SetMaster(v)`: clamp to [0,1], round to 4 decimals, store, reconcile
+    with `master_fade`. While muted: store only — reconcile happens on
+    unmute. (Every stored master — set, inferred at startup, or derived by
+    reverse sync — is rounded to 4 decimals: fine enough that a 1/100 device
+    step round-trips exactly, coarse enough that published state never shows
+    division artefacts.)
 
 3.2 Master changes (forward or reverse) do not touch `last_transition`.
 
@@ -237,7 +241,7 @@ presence reaches.
 
 4.3 `TimerFired(external_debounce(speaker))`: take `pending_external` (ignore
     if cleared), re-check rule 4.1 conditions at *fire* time, compute
-    `implied_master(v, trim, current room_scale)`. If
+    `implied_master(v, trim, current room_scale)` (rounded per 3.1). If
     `|implied - master| > sync_threshold`: set master, set the reporting
     speaker's `commanded = v` (it is already at its target — no ramp for it),
     reconcile others with `rebalance_fade`.
@@ -348,8 +352,10 @@ presence reaches.
 
 ## 10. Miscellany
 
-10.1 `SetTrim(speaker, t)`: update config-shadow trim (engine keeps a
-     mutable trim map seeded from config), reconcile (`rebalance_fade`).
+10.1 `SetTrim(speaker, t)`: update the runtime trim (`state.trims`, a
+     published mutable map seeded from config; adapters read targets and
+     restore trims from it, never from the static config), reconcile
+     (`rebalance_fade`).
 
 10.2 Unknown/stale `TimerFired` ids are ignored silently.
 

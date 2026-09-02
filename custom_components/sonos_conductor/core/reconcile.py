@@ -62,7 +62,7 @@ def desired(engine: ConductorEngine, speaker_id: str) -> float | None:
         # VOLUME_FLOOR: Sonos shows a green status LED at volume 0).
         return volume_math.VOLUME_FLOOR
     target = volume_math.speaker_target(
-        engine.state.master, engine._trims[speaker_id], room_scale(engine, zone.room_id)
+        engine.state.master, engine.state.trims[speaker_id], room_scale(engine, zone.room_id)
     )
     cap = duck_cap(engine)
     if cap is not None:

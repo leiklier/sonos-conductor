@@ -14,7 +14,7 @@ from collections import deque
 from collections.abc import Callable, Iterable
 
 from custom_components.sonos_conductor.core.effects import Effect
-from custom_components.sonos_conductor.core.events import Event
+from custom_components.sonos_conductor.core.events import Event, SetTrim
 from custom_components.sonos_conductor.core.model import (
     ConductorConfig,
     EngineState,
@@ -56,6 +56,7 @@ class FakeEngine:
             self.state.duck_active[duck.input_id] = bool(
                 snapshot.duck_active.get(duck.input_id, False)
             )
+        self.state.trims = {s.speaker_id: s.trim for s in config.speakers}
 
         #: Every event received, in order.
         self.events: list[Event] = []
@@ -86,6 +87,10 @@ class FakeEngine:
         self._processing = True
         try:
             self.events.append(event)
+            if isinstance(event, SetTrim):
+                # Mirror the real engine's published trims so entities that
+                # read them (number, zone sensor) can be tested end to end.
+                self.state.trims[event.speaker_id] = event.trim
             if self.responder is not None:
                 return list(self.responder(event) or [])
             if self._scripted:
